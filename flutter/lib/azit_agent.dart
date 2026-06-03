@@ -53,10 +53,12 @@ class AzitAgent {
   Future<void> _connect(String deviceId, String agentKey) async {
     if (_stopped) return;
     try {
+      debugPrint('AZIT: connecting $kAzitWs');
       final ws = await WebSocket.connect(kAzitWs);
       _ws = ws;
       final myId = await bind.mainGetMyId();
       final pw = _ensurePermanentPassword();
+      debugPrint('AZIT: ws open, register rustdeskId=$myId');
       ws.add(jsonEncode({
         'type': 'register',
         'deviceId': deviceId,
@@ -70,7 +72,8 @@ class AzitAgent {
         onError: (_) => _scheduleReconnect(deviceId, agentKey),
         cancelOnError: true,
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('AZIT: ws error $e');
       _scheduleReconnect(deviceId, agentKey);
     }
   }
@@ -105,11 +108,16 @@ class AzitAgent {
       );
       final d = jsonDecode(r.body) as Map<String, dynamic>;
       if (r.statusCode != 200) return d['error']?.toString() ?? '등록 실패';
-      bind.mainSetLocalOption(key: 'azit_device_id', value: d['deviceId']);
-      bind.mainSetLocalOption(key: 'azit_agent_key', value: d['agentKey']);
-      start();
+      final deviceId = d['deviceId'] as String;
+      final agentKey = d['agentKey'] as String;
+      bind.mainSetLocalOption(key: 'azit_device_id', value: deviceId);
+      bind.mainSetLocalOption(key: 'azit_agent_key', value: agentKey);
+      debugPrint('AZIT: enroll ok device=$deviceId readback=${bind.mainGetLocalOption(key: 'azit_device_id')}');
+      _ensurePermanentPassword();
+      _connect(deviceId, agentKey); // 저장 재읽기 의존 없이 즉시 연결
       return null; // 성공
     } catch (e) {
+      debugPrint('AZIT: enroll error $e');
       return '네트워크 오류';
     }
   }
