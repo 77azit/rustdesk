@@ -62,12 +62,35 @@ class MainActivity : FlutterActivity() {
             channelTag
         )
         initFlutterChannel(flutterMethodChannel!!)
+        // 키오스크관리: 우리 네이티브 채널 (device-owner 리부트 등)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "azit/native")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "reboot" -> { azitReboot(); result.success(true) }
+                    else -> result.notImplemented()
+                }
+            }
         thread {
             try {
                 setCodecInfo()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to setCodecInfo: ${e.message}", e)
             }
+        }
+    }
+
+    // 키오스크관리: device-owner면 기기 리부트
+    private fun azitReboot() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val admin = ComponentName(this, AzitAdminReceiver::class.java)
+            if (dpm.isDeviceOwnerApp(packageName)) {
+                dpm.reboot(admin)
+            } else {
+                Log.w(logTag, "리부트 요청: device-owner 아님 — 무시됨")
+            }
+        } catch (e: Exception) {
+            Log.e(logTag, "리부트 실패: ${e.message}")
         }
     }
 
