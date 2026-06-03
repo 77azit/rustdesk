@@ -24,7 +24,8 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { arch: aarch64, target: aarch64-linux-android, reltype: release }
+          - { arch: aarch64, target: aarch64-linux-android, abi: arm64-v8a, plat: android-arm64, syslib: aarch64-linux-android, apk: app-arm64-v8a-release.apk, ndk: ndk_arm64.sh }
+          - { arch: x86_64,  target: x86_64-linux-android,  abi: x86_64,    plat: android-x64,   syslib: x86_64-linux-android,  apk: app-x86_64-release.apk,   ndk: ndk_x64.sh }
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
@@ -87,7 +88,7 @@ jobs:
       - name: Install vcpkg dependencies
         shell: bash
         run: |
-          if ! ./flutter/build_android_deps.sh "arm64-v8a"; then
+          if ! ./flutter/build_android_deps.sh "${{ matrix.job.abi }}"; then
             find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
               echo "$_1:"; echo "======"; cat "$_1"; echo "======"; echo ""
             done
@@ -118,9 +119,9 @@ jobs:
         run: |
           rustup target add ${{ matrix.job.target }}
           cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked
-          ./flutter/ndk_arm64.sh
-          mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
-          cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+          ./flutter/${{ matrix.job.ndk }}
+          mkdir -p ./flutter/android/app/src/main/jniLibs/${{ matrix.job.abi }}
+          cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/${{ matrix.job.abi }}/librustdesk.so
 
       - name: Build APK
         env:
@@ -130,13 +131,13 @@ jobs:
           export PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
           sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
           sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
-          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${{ matrix.job.syslib }}/libc++_shared.so ./flutter/android/app/src/main/jniLibs/${{ matrix.job.abi }}/
           pushd flutter
-          flutter build apk --release --target-platform android-arm64 --split-per-abi
+          flutter build apk --release --target-platform ${{ matrix.job.plat }} --split-per-abi
           popd
 
       - name: Upload APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: myapp-android-arm64
-          path: ./flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          name: myapp-android-${{ matrix.job.arch }}
+          path: ./flutter/build/app/outputs/flutter-apk/${{ matrix.job.apk }}
