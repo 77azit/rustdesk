@@ -26,6 +26,11 @@ class AzitAgent {
   Timer? _reconnectTimer;
 
   Future<void> start() async {
+    // 키오스크는 항상 "피제어 가능" 상태여야 함. RustDesk 모바일은 기본이 제어자모드라
+    // 서비스를 자동시작 안 함 → 코어가 hbbs에 등록 안 됨 → 외부에서 "offline".
+    // 우리가 직접 서비스 시작 → hbbs 등록 + 화면수신 준비(권한은 device-owner/appops 사전부여).
+    _ensureRustDeskService();
+
     String deviceId = '', agentKey = '';
     try {
       final creds = await _native.invokeMethod('get_creds');
@@ -41,6 +46,24 @@ class AzitAgent {
     }
     _ensurePermanentPassword();
     _connect(deviceId, agentKey);
+  }
+
+  bool _serviceStarted = false;
+  // RustDesk 서비스(코어 server + 화면캡처) 시작 → 기기가 hbbs에 등록되어 외부 접속 수신 가능
+  void _ensureRustDeskService() {
+    if (_serviceStarted) return;
+    _serviceStarted = true;
+    // FFI/엔진 초기화 여유를 두고 시작
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        if (!gFFI.serverModel.isStart) {
+          await gFFI.serverModel.startService();
+          debugPrint('AZIT: RustDesk service started → hbbs 등록');
+        }
+      } catch (e) {
+        debugPrint('AZIT: startService error $e');
+      }
+    });
   }
 
   void _showPairScreen() {
