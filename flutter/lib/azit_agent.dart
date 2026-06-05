@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_hbb/models/platform_model.dart'; // bind
 import 'package:flutter_hbb/common.dart'; // globalKey
+import 'package:flutter_hbb/azit_pair.dart'; // AzitPairScreen (QR+6자리)
 
 const String kAzitBase = 'https://remote.77azit.com/panel';
 const String kAzitWs = 'wss://remote.77azit.com/panel/agent';
@@ -34,10 +35,39 @@ class AzitAgent {
       debugPrint('AZIT: get_creds error $e');
     }
     if (deviceId.isEmpty || agentKey.isEmpty) {
-      // 미등록 → 첫 화면 뜬 뒤 등록 다이얼로그
-      WidgetsBinding.instance.addPostFrameCallback((_) => _promptEnroll());
+      // 미등록 → QR+6자리 페어링 화면(제어자가 스캔/입력하면 클레임됨)
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showPairScreen());
       return;
     }
+    _ensurePermanentPassword();
+    _connect(deviceId, agentKey);
+  }
+
+  void _showPairScreen() {
+    final ctx = globalKey.currentContext;
+    if (ctx == null) return;
+    Navigator.of(ctx).push(
+      MaterialPageRoute(builder: (_) => const AzitPairScreen()),
+    );
+  }
+
+  // 피제어 기기 신원: 영구비번 보장 + 현재 RustDesk ID 반환(페어링 announce용)
+  Future<Map<String, String>> prepareIdentity() async {
+    final pw = _ensurePermanentPassword();
+    String myId = '';
+    try {
+      myId = await bind.mainGetMyId();
+    } catch (_) {}
+    return {'id': myId, 'pw': pw};
+  }
+
+  // 페어링 클레임 성공 → 자격 저장 + 에이전트 연결 시작
+  Future<void> onClaimed(String deviceId, String agentKey) async {
+    if (deviceId.isEmpty || agentKey.isEmpty) return;
+    try {
+      await _native
+          .invokeMethod('save_creds', {'deviceId': deviceId, 'agentKey': agentKey});
+    } catch (_) {}
     _ensurePermanentPassword();
     _connect(deviceId, agentKey);
   }
