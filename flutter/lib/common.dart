@@ -2994,7 +2994,7 @@ int versionCmp(String v1, String v2) {
 }
 
 String getWindowName({WindowType? overrideType}) {
-  final name = bind.mainGetAppNameSync();
+  final name = '키오스크관리'; // 리브랜딩(코어 앱명 'RustDesk' 대체)
   switch (overrideType ?? kWindowType) {
     case WindowType.Main:
       return name;

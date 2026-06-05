@@ -578,15 +578,18 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
         const Text('새 기기 연결',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: _busy ? null : _scan,
-          icon: const Icon(Icons.qr_code_scanner),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text('QR 스캔하기'),
+        // QR 스캔은 카메라 있는 모바일만(데스크탑은 6자리 입력)
+        if (!isDesktop) ...[
+          ElevatedButton.icon(
+            onPressed: _busy ? null : _scan,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('QR 스캔하기'),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(

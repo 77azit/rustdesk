@@ -7,6 +7,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/azit_agent.dart';
+import 'package:flutter_hbb/azit_pair.dart'; // AzitControllerScreen (PC 6자리 컨트롤러)
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/desktop/pages/install_page.dart';
@@ -176,7 +177,24 @@ void runMainApp(bool startService) async {
     windowManager.setTitle(getWindowName());
     // Do not use `windowManager.setResizable()` here.
     setResizable(!bind.isIncomingOnly());
+    // PC는 컨트롤러 용도 → 우리 6자리/계정 연결 화면을 위에 표시(뒤로 가면 기본 화면)
+    _showAzitController();
   });
+}
+
+// 데스크탑 컨트롤러 화면 표시(컨텍스트 준비될 때까지 재시도)
+void _showAzitController([int attempt = 0]) {
+  final ctx = globalKey.currentContext;
+  if (ctx == null) {
+    if (attempt < 30) {
+      Future.delayed(
+          const Duration(milliseconds: 400), () => _showAzitController(attempt + 1));
+    }
+    return;
+  }
+  Navigator.of(ctx).push(
+    MaterialPageRoute(builder: (_) => const AzitControllerScreen()),
+  );
 }
 
 void runMobileApp() async {
