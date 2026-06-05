@@ -26,14 +26,43 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
   String? _qrPayload;
   String _status = '준비 중...';
   bool _claimed = false;
+  bool _revealed = false; // 코드 표시 중인지(상시노출 X, 도움받기 누를 때만)
+  int _secsLeft = 0;
   Timer? _pollTimer;
   Timer? _refreshTimer;
+  Timer? _countdown;
+  static const int kRevealSecs = 180; // 3분 표시 후 자동 숨김(노출 최소화)
 
   @override
   void initState() {
     super.initState();
     _deviceKey = _ensureDeviceKey();
+    // 보안: 코드를 상시 띄우지 않음. 사용자가 [도움 받기]를 눌러야 표시.
+  }
+
+  void _reveal() {
+    if (_revealed || _claimed) return;
+    setState(() {
+      _revealed = true;
+      _status = '준비 중...';
+      _secsLeft = kRevealSecs;
+    });
     _announce();
+    _countdown?.cancel();
+    _countdown = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || _claimed) { t.cancel(); return; }
+      setState(() => _secsLeft--);
+      if (_secsLeft <= 0) { t.cancel(); _hide(); }
+    });
+  }
+
+  void _hide() {
+    _pollTimer?.cancel();
+    _refreshTimer?.cancel();
+    _countdown?.cancel();
+    if (mounted) {
+      setState(() { _revealed = false; _code = null; _qrPayload = null; });
+    }
   }
 
   String _ensureDeviceKey() {
@@ -184,6 +213,7 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
     _claimed = true;
     _pollTimer?.cancel();
     _refreshTimer?.cancel();
+    _countdown?.cancel();
     AzitAgent.instance.onClaimed(
         (d['deviceId'] ?? '').toString(), (d['agentKey'] ?? '').toString());
     if (mounted) setState(() => _status = '연결되었습니다 ✓');
@@ -193,6 +223,7 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
   void dispose() {
     _pollTimer?.cancel();
     _refreshTimer?.cancel();
+    _countdown?.cancel();
     super.dispose();
   }
 
@@ -210,43 +241,69 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
                 const Text('이 기기 연결하기',
                     style: TextStyle(
                         fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
-                const SizedBox(height: 8),
-                Text(_status,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 15, color: Colors.black54)),
-                const SizedBox(height: 24),
-                if (_claimed)
-                  const Icon(Icons.check_circle, color: Color(0xFF22a06b), size: 120)
-                else if (_qrPayload != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFe0e0e0)),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: QrImageView(
-                      data: _qrPayload!,
-                      version: QrVersions.auto,
-                      size: 240,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  const Text('또는 이 번호 입력',
-                      style: TextStyle(fontSize: 14, color: Colors.black45)),
-                  const SizedBox(height: 6),
-                  Text(
-                    _code ?? '------',
-                    style: const TextStyle(
-                      fontSize: 52,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 10,
-                      color: Color(0xFF2d6cdf),
+                const SizedBox(height: 12),
+                if (_claimed) ...[
+                  const Text('연결되었습니다 ✓',
+                      style: TextStyle(fontSize: 15, color: Colors.black54)),
+                  const SizedBox(height: 24),
+                  const Icon(Icons.check_circle,
+                      color: Color(0xFF22a06b), size: 120),
+                ] else if (!_revealed) ...[
+                  // 보안: 코드를 상시 노출하지 않음. 누군가 도와줄 때만 표시.
+                  const Text('도움을 받을 때만 연결 코드를 보여주세요',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 15, color: Colors.black54)),
+                  const SizedBox(height: 40),
+                  SizedBox(
+                    width: 260,
+                    height: 64,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.qr_code_2, size: 28),
+                      label: const Text('도움 받기 (연결 코드 보기)',
+                          style: TextStyle(fontSize: 16)),
+                      onPressed: _reveal,
                     ),
                   ),
-                ] else
-                  const CircularProgressIndicator(),
-                const SizedBox(height: 40),
+                ] else ...[
+                  Text(_status,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 15, color: Colors.black54)),
+                  const SizedBox(height: 20),
+                  if (_qrPayload != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFe0e0e0)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: QrImageView(
+                        data: _qrPayload!,
+                        version: QrVersions.auto,
+                        size: 220,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('또는 이 번호 입력',
+                        style: TextStyle(fontSize: 14, color: Colors.black45)),
+                    const SizedBox(height: 6),
+                    Text(
+                      _code ?? '------',
+                      style: const TextStyle(
+                        fontSize: 50,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 10,
+                        color: Color(0xFF2d6cdf),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text('$_secsLeft초 후 자동으로 숨겨집니다',
+                        style: const TextStyle(fontSize: 12, color: Colors.black38)),
+                    TextButton(onPressed: _hide, child: const Text('숨기기')),
+                  ] else
+                    const CircularProgressIndicator(),
+                ],
+                const SizedBox(height: 32),
                 TextButton.icon(
                   icon: const Icon(Icons.cast_connected),
                   label: const Text('다른 기기 제어하기'),
