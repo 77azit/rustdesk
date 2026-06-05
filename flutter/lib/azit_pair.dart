@@ -96,6 +96,8 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
     }
   }
 
+  bool _approvalShowing = false;
+
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
@@ -105,10 +107,72 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
             .get(Uri.parse('$kAzitBase/api/pair/status?deviceKey=$_deviceKey'));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body) as Map<String, dynamic>;
-          if (d['claimed'] == true) _onClaimed(d);
+          if (d['claimed'] == true) {
+            _onClaimed(d);
+          } else if (d['request'] != null && !_approvalShowing) {
+            // 누군가 6자리로 연결을 요청함 → 기기 앞 사람이 허용해야 자격 발급(보안 핵심)
+            _showApprovalDialog(d['request'] as Map<String, dynamic>);
+          }
         }
       } catch (_) {}
     });
+  }
+
+  // 연결 승인 다이얼로그: 코드를 훔쳐봐도 여기서 [허용]을 안 누르면 못 붙음
+  Future<void> _showApprovalDialog(Map<String, dynamic> req) async {
+    if (_approvalShowing || _claimed || !mounted) return;
+    _approvalShowing = true;
+    final requestId = (req['requestId'] ?? '').toString();
+    final verify = (req['verifyCode'] ?? '--').toString();
+    final email = (req['accountEmail'] ?? '').toString();
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        title: const Text('연결 요청'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$email 님이 이 기기에 연결하려 합니다.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15)),
+            const SizedBox(height: 16),
+            const Text('상대 화면의 확인번호와 같은지 보세요',
+                style: TextStyle(fontSize: 13, color: Colors.black54)),
+            const SizedBox(height: 6),
+            Text(verify,
+                style: const TextStyle(
+                    fontSize: 44,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 8,
+                    color: Color(0xFF2d6cdf))),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('거부', style: TextStyle(color: Colors.red)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('허용'),
+          ),
+        ],
+      ),
+    );
+    try {
+      await http.post(
+        Uri.parse('$kAzitBase/api/pair/approve'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'deviceKey': _deviceKey,
+          'requestId': requestId,
+          'approve': approved == true,
+        }),
+      );
+    } catch (_) {}
+    _approvalShowing = false;
+    // 허용했으면 다음 폴링에서 claimed 잡힘. 거부했으면 계속 코드 표시.
   }
 
   void _onClaimed(Map<String, dynamic> d) {
@@ -276,6 +340,8 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     } catch (_) {}
   }
 
+  String _awaitVerify = ''; // 기기 승인 대기 중 표시할 확인번호
+
   Future<void> _redeem(String raw) async {
     final code = raw.replaceAll(RegExp(r'\D'), '');
     if (code.length != 6) {
@@ -285,6 +351,7 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     setState(() {
       _busy = true;
       _msg = '';
+      _awaitVerify = '';
     });
     try {
       final r = await http.post(
@@ -293,11 +360,10 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
         body: jsonEncode({'code': code}),
       );
       final d = jsonDecode(r.body) as Map<String, dynamic>;
-      if (r.statusCode == 200) {
+      if (r.statusCode == 200 && d['pending'] == true) {
         _code.clear();
-        await _loadDevices();
-        _connectTo(
-            (d['rustdeskId'] ?? '').toString(), (d['password'] ?? '').toString());
+        if (mounted) setState(() => _awaitVerify = (d['verifyCode'] ?? '').toString());
+        await _pollApproval((d['requestId'] ?? '').toString());
       } else {
         setState(() => _msg = d['error']?.toString() ?? '연결 실패');
       }
@@ -306,6 +372,37 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  // 기기 승인 폴링(최대 2분). 기기에서 [허용]하면 자격 받아 연결.
+  Future<void> _pollApproval(String requestId) async {
+    for (int i = 0; i < 60; i++) {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final r = await http.get(
+            Uri.parse('$kAzitBase/api/pair/redeem/status?requestId=$requestId'),
+            headers: _auth);
+        if (r.statusCode != 200) {
+          setState(() { _msg = '요청이 만료되었습니다'; _awaitVerify = ''; });
+          return;
+        }
+        final d = jsonDecode(r.body) as Map<String, dynamic>;
+        final st = d['status'];
+        if (st == 'approved') {
+          setState(() => _awaitVerify = '');
+          await _loadDevices();
+          _connectTo((d['rustdeskId'] ?? '').toString(),
+              (d['password'] ?? '').toString());
+          return;
+        } else if (st == 'denied') {
+          setState(() { _msg = '기기에서 연결을 거부했습니다'; _awaitVerify = ''; });
+          return;
+        }
+        // pending → 계속 대기
+      } catch (_) {}
+    }
+    if (mounted) setState(() { _msg = '승인 대기 시간이 초과됐어요. 다시 시도하세요'; _awaitVerify = ''; });
   }
 
   // 이미 페어링된 기기 재접속(로그인 PIN만으로) — 현재 RustDesk 자격을 서버에서 받아 연결
@@ -445,7 +542,9 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
             ),
             const SizedBox(width: 10),
             ElevatedButton(
-              onPressed: _busy ? null : () => _redeem(_code.text),
+              onPressed: (_busy || _awaitVerify.isNotEmpty)
+                  ? null
+                  : () => _redeem(_code.text),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 child: Text('연결'),
@@ -453,6 +552,37 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
             ),
           ],
         ),
+        if (_awaitVerify.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFeef3ff),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF2d6cdf)),
+            ),
+            child: Column(
+              children: [
+                const Text('기기에서 [허용]을 눌러주세요',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                const SizedBox(height: 4),
+                const Text('아래 확인번호가 기기 화면과 같은지 확인',
+                    style: TextStyle(fontSize: 12, color: Colors.black54)),
+                const SizedBox(height: 6),
+                Text(_awaitVerify,
+                    style: const TextStyle(
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 8,
+                        color: Color(0xFF2d6cdf))),
+                const SizedBox(height: 6),
+                const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
+          ),
         if (_msg.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
