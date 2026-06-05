@@ -97,6 +97,17 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 키오스크관리: device-owner면 잠금 시작(홈·뒤로·최근 막기). 활성 후 호출해야 적용됨
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            if (dpm.isDeviceOwnerApp(packageName) &&
+                dpm.isLockTaskPermitted(packageName)) {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                if (am.lockTaskModeState == android.app.ActivityManager.LOCK_TASK_MODE_NONE) {
+                    startLockTask()
+                }
+            }
+        } catch (_: Exception) {}
         val inputPer = InputService.isOpen
         activity.runOnUiThread {
             flutterMethodChannel?.invokeMethod(
@@ -136,10 +147,16 @@ class MainActivity : FlutterActivity() {
             if (!dpm.isDeviceOwnerApp(packageName)) return
             val admin = ComponentName(this, AzitAdminReceiver::class.java)
             dpm.setLockTaskPackages(admin, arrayOf(packageName))
-            try { startLockTask() } catch (_: Exception) {}
+            // startLockTask는 onResume(액티비티 활성 후)에서 호출
             // 하드웨어 음량버튼 잠금(앱/시스템에서만 조절). 외부 사용자가 못 바꿈
             dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_ADJUST_VOLUME)
-            Log.i(logTag, "키오스크 잠금 + 음량 고정 적용")
+            // 우리 앱을 기본 HOME(런처)로 → 부팅 시 자동 실행 + 홈버튼 눌러도 우리 앱 유지
+            val homeFilter = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+            }
+            dpm.addPersistentPreferredActivity(admin, homeFilter, ComponentName(this, MainActivity::class.java))
+            Log.i(logTag, "키오스크 잠금 + 음량 고정 + HOME 지정 적용")
         } catch (e: Exception) {
             Log.e(logTag, "키오스크 셋업 실패: ${e.message}")
         }

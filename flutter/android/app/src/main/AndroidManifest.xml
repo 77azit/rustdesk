@@ -83,6 +83,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- 키오스크관리: HOME(런처)로 지정 가능하게 — 부팅 자동실행+홈버튼 방어 -->
+            <intent-filter android:priority="1">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
             <!-- Intent for deep linking-->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
