@@ -25,8 +25,14 @@ class AzitAgent {
   Timer? _reconnectTimer;
 
   Future<void> start() async {
-    final deviceId = bind.mainGetLocalOption(key: 'azit_device_id');
-    final agentKey = bind.mainGetLocalOption(key: 'azit_agent_key');
+    String deviceId = '', agentKey = '';
+    try {
+      final creds = await _native.invokeMethod('get_creds');
+      deviceId = (creds?['deviceId'] ?? '').toString();
+      agentKey = (creds?['agentKey'] ?? '').toString();
+    } catch (e) {
+      debugPrint('AZIT: get_creds error $e');
+    }
     if (deviceId.isEmpty || agentKey.isEmpty) {
       // 미등록 → 첫 화면 뜬 뒤 등록 다이얼로그
       WidgetsBinding.instance.addPostFrameCallback((_) => _promptEnroll());
@@ -115,9 +121,10 @@ class AzitAgent {
       if (r.statusCode != 200) return d['error']?.toString() ?? '등록 실패';
       final deviceId = d['deviceId'] as String;
       final agentKey = d['agentKey'] as String;
-      bind.mainSetLocalOption(key: 'azit_device_id', value: deviceId);
-      bind.mainSetLocalOption(key: 'azit_agent_key', value: agentKey);
-      debugPrint('AZIT: enroll ok device=$deviceId readback=${bind.mainGetLocalOption(key: 'azit_device_id')}');
+      try {
+        await _native.invokeMethod('save_creds', {'deviceId': deviceId, 'agentKey': agentKey});
+      } catch (_) {}
+      debugPrint('AZIT: enroll ok device=$deviceId');
       _ensurePermanentPassword();
       _connect(deviceId, agentKey); // 저장 재읽기 의존 없이 즉시 연결
       return null; // 성공

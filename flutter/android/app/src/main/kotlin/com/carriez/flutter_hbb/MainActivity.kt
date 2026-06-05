@@ -68,6 +68,20 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "reboot" -> { azitReboot(); result.success(true) }
                     "set_volume" -> { azitSetVolume(call.argument<Int>("percent") ?: 50); result.success(true) }
+                    "save_creds" -> {
+                        getSharedPreferences("azit_agent", Context.MODE_PRIVATE).edit()
+                            .putString("device_id", call.argument<String>("deviceId"))
+                            .putString("agent_key", call.argument<String>("agentKey"))
+                            .apply()
+                        result.success(true)
+                    }
+                    "get_creds" -> {
+                        val p = getSharedPreferences("azit_agent", Context.MODE_PRIVATE)
+                        result.success(mapOf(
+                            "deviceId" to (p.getString("device_id", "") ?: ""),
+                            "agentKey" to (p.getString("agent_key", "") ?: "")
+                        ))
+                    }
                     else -> result.notImplemented()
                 }
             }
