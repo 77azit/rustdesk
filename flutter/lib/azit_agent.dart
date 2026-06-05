@@ -66,9 +66,19 @@ class AzitAgent {
     });
   }
 
-  void _showPairScreen() {
+  bool _pairPushed = false;
+  // 페어 화면 표시. 첫 실행 땐 컨텍스트가 아직 준비 안 돼 push가 실패할 수 있으므로 준비될 때까지 재시도.
+  void _showPairScreen([int attempt = 0]) {
+    if (_pairPushed) return;
     final ctx = globalKey.currentContext;
-    if (ctx == null) return;
+    if (ctx == null) {
+      if (attempt < 30) {
+        Future.delayed(
+            const Duration(milliseconds: 400), () => _showPairScreen(attempt + 1));
+      }
+      return;
+    }
+    _pairPushed = true;
     Navigator.of(ctx).push(
       MaterialPageRoute(builder: (_) => const AzitPairScreen()),
     );
@@ -95,14 +105,21 @@ class AzitAgent {
     _connect(deviceId, agentKey);
   }
 
-  // 무인 접속용 영구 비밀번호 보장(없으면 생성·저장·적용)
+  // 무인 접속용 비밀번호 보장(없으면 생성·저장·적용)
   String _ensurePermanentPassword() {
     var pw = bind.mainGetLocalOption(key: 'azit_pw');
-    if (pw.isEmpty) {
-      final r = Random.secure();
-      pw = List.generate(8, (_) => r.nextInt(10)).join();
-      bind.mainSetLocalOption(key: 'azit_pw', value: pw);
-    }
+    if (pw.isEmpty) return rotatePassword();
+    try {
+      bind.mainSetPermanentPasswordWithResult(password: pw);
+    } catch (_) {}
+    return pw;
+  }
+
+  // 1회용 비번 회전: 항상 새 비번 생성·적용·저장 → 반환(승인/재접속마다 호출, 정적 비번 제거)
+  String rotatePassword() {
+    final r = Random.secure();
+    final pw = List.generate(8, (_) => r.nextInt(10)).join();
+    bind.mainSetLocalOption(key: 'azit_pw', value: pw);
     try {
       bind.mainSetPermanentPasswordWithResult(password: pw);
     } catch (_) {}
@@ -142,6 +159,12 @@ class AzitAgent {
     try {
       m = jsonDecode(data as String) as Map<String, dynamic>;
     } catch (_) {
+      return;
+    }
+    if (m['type'] == 'rotate_password') {
+      // 재접속 시 서버가 1회용 비번 회전 요청 → 새 비번 생성·적용·보고
+      final pw = rotatePassword();
+      _ws?.add(jsonEncode({'type': 'password-rotated', 'id': m['id'], 'password': pw}));
       return;
     }
     if (m['type'] == 'command') {

@@ -161,6 +161,9 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
       ),
     );
     try {
+      // 허용 시 새 1회용 비번 회전 → 이번 연결용으로 발급(정적 비번 제거)
+      final freshPw =
+          approved == true ? AzitAgent.instance.rotatePassword() : '';
       await http.post(
         Uri.parse('$kAzitBase/api/pair/approve'),
         headers: {'Content-Type': 'application/json'},
@@ -168,6 +171,7 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
           'deviceKey': _deviceKey,
           'requestId': requestId,
           'approve': approved == true,
+          'rustdeskPassword': freshPw,
         }),
       );
     } catch (_) {}
