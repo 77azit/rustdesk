@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "reboot" -> { azitReboot(); result.success(true) }
+                    "set_volume" -> { azitSetVolume(call.argument<Int>("percent") ?: 50); result.success(true) }
                     else -> result.notImplemented()
                 }
             }
@@ -125,6 +126,49 @@ class MainActivity : FlutterActivity() {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             FFI.setClipboardManager(_rdClipboardManager!!)
         }
+        azitSetupKiosk()
+    }
+
+    // 키오스크관리: device-owner면 잠금(홈·뒤로·최근 막기) — 다른 사용자가 못 빠져나감
+    private fun azitSetupKiosk() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            if (!dpm.isDeviceOwnerApp(packageName)) return
+            val admin = ComponentName(this, AzitAdminReceiver::class.java)
+            dpm.setLockTaskPackages(admin, arrayOf(packageName))
+            try { startLockTask() } catch (_: Exception) {}
+            // 하드웨어 음량버튼 잠금(앱/시스템에서만 조절). 외부 사용자가 못 바꿈
+            dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_ADJUST_VOLUME)
+            Log.i(logTag, "키오스크 잠금 + 음량 고정 적용")
+        } catch (e: Exception) {
+            Log.e(logTag, "키오스크 셋업 실패: ${e.message}")
+        }
+    }
+
+    // 음량 설정(0~100). device-owner 제한을 잠시 풀고 적용 후 복원 → 앱 내에서만 조절 가능
+    private fun azitSetVolume(percent: Int) {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val isOwner = dpm.isDeviceOwnerApp(packageName)
+            val admin = ComponentName(this, AzitAdminReceiver::class.java)
+            if (isOwner) dpm.clearUserRestriction(admin, android.os.UserManager.DISALLOW_ADJUST_VOLUME)
+            val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+            val v = (percent.coerceIn(0, 100) * max / 100)
+            am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, v, 0)
+            if (isOwner) dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_ADJUST_VOLUME)
+        } catch (e: Exception) {
+            Log.e(logTag, "음량 설정 실패: ${e.message}")
+        }
+    }
+
+    // 하드웨어 음량 버튼 차단 (앱이 항상 포그라운드인 키오스크에서 외부 조작 방지)
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            return true // consume
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onDestroy() {

@@ -85,8 +85,13 @@ class AzitAgent {
     } catch (_) {
       return;
     }
-    if (m['type'] == 'command' && m['command'] == 'reboot') {
-      _native.invokeMethod('reboot');
+    if (m['type'] == 'command') {
+      final cmd = m['command'];
+      if (cmd == 'reboot') {
+        _native.invokeMethod('reboot');
+      } else if (cmd == 'set_volume') {
+        _native.invokeMethod('set_volume', {'percent': (m['value'] ?? 50)});
+      }
       _ws?.add(jsonEncode({'type': 'command-result', 'id': m['id'], 'ok': true}));
     }
   }

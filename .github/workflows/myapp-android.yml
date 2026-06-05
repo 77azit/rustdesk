@@ -136,8 +136,20 @@ jobs:
           flutter build apk --release --target-platform ${{ matrix.job.plat }} --split-per-abi
           popd
 
-      - name: Upload APK
+      - name: Sign APK (release keystore)
+        uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407 # v1
+        id: sign
+        with:
+          releaseDirectory: ./flutter/build/app/outputs/flutter-apk
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Upload APK (signed)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: myapp-android-${{ matrix.job.arch }}
-          path: ./flutter/build/app/outputs/flutter-apk/${{ matrix.job.apk }}
+          path: ${{ steps.sign.outputs.signedReleaseFile }}
