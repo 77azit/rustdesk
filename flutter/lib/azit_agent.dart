@@ -26,6 +26,10 @@ class AzitAgent {
   Timer? _reconnectTimer;
 
   Future<void> start() async {
+    // 떠다니는 둥근 버튼(RustDesk 플로팅 볼) 영구 차단 — 키오스크/어르신 화면·제어자 화면에 안 보이게.
+    try {
+      bind.mainSetLocalOption(key: 'disable-floating-window', value: 'Y');
+    } catch (_) {}
     String deviceId = '', agentKey = '';
     try {
       final creds = await _native.invokeMethod('get_creds');
