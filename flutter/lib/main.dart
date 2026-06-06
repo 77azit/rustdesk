@@ -177,8 +177,8 @@ void runMainApp(bool startService) async {
     windowManager.setTitle(getWindowName());
     // Do not use `windowManager.setResizable()` here.
     setResizable(!bind.isIncomingOnly());
-    // PC는 컨트롤러 용도 → 우리 6자리/계정 연결 화면을 위에 표시(뒤로 가면 기본 화면)
-    _showAzitController();
+    // PC 컨트롤러 홈은 DesktopTabPage 홈 탭에서 AzitControllerScreen으로 '진짜 교체'됨
+    // (오버레이 push 제거 — 뒤로 가도 RustDesk 화면 안 나옴)
   });
 }
 
@@ -521,8 +521,8 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           navigatorKey: globalKey,
           debugShowCheckedModeBanner: false,
           title: isWeb
-              ? '${bind.mainGetAppNameSync()} Web Client V2 (Preview)'
-              : bind.mainGetAppNameSync(),
+              ? '${getWindowName()} Web Client V2 (Preview)'
+              : getWindowName(),
           theme: MyTheme.lightTheme,
           darkTheme: MyTheme.darkTheme,
           themeMode: MyTheme.currentThemeMode(),

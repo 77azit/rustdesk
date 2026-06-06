@@ -3,6 +3,7 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
+import 'package:flutter_hbb/azit_pair.dart'; // 우리 컨트롤러 홈(진짜 교체)
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -49,8 +50,8 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
         selectedIcon: Icons.home_sharp,
         unselectedIcon: Icons.home_outlined,
         closable: false,
-        page: DesktopHomePage(
-          key: const ValueKey(kTabLabelHomePage),
+        page: const AzitControllerScreen(
+          key: ValueKey(kTabLabelHomePage),
         )));
     if (bind.isIncomingOnly()) {
       tabController.onSelected = (key) {
@@ -97,7 +98,7 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
             body: DesktopTab(
               controller: tabController,
               tail: Offstage(
-                offstage: bind.isIncomingOnly() || bind.isDisableSettings(),
+                offstage: true, // RustDesk 설정 진입점 숨김(우리 셸)
                 child: ActionIcon(
                   message: 'Settings',
                   icon: IconFont.menu,
