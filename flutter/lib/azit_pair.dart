@@ -10,7 +10,8 @@ import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter_hbb/models/platform_model.dart'; // bind
-import 'package:flutter_hbb/common.dart'; // connect(), showToast
+import 'package:flutter_hbb/common.dart'; // connect(), showToast, AndroidPermissionManager, gFFI
+import 'package:flutter_hbb/consts.dart'; // kActionAccessibilitySettings
 import 'package:flutter_hbb/azit_agent.dart'; // AzitAgent, kAzitBase
 
 // ========================= 피제어 기기: QR + 6자리 표시 =========================
@@ -48,12 +49,55 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
       _secsLeft = kRevealSecs;
     });
     _announce();
+    // 어르신 친화: 화면 터치 제어용 접근성 권한이 꺼져있으면 설정까지 안내(딥링크)
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _ensureInputPermissionGuide());
     _countdown?.cancel();
     _countdown = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || _claimed) { t.cancel(); return; }
       setState(() => _secsLeft--);
       if (_secsLeft <= 0) { t.cancel(); _hide(); }
     });
+  }
+
+  // 화면 터치 제어(접근성) 권한이 꺼져있으면 친절히 안내 + 설정으로 직접 데려다줌.
+  // (RustDesk처럼 사용자가 '설정 어디 가세요' 헤매지 않게)
+  bool _inputGuideShown = false;
+  void _ensureInputPermissionGuide() {
+    if (_inputGuideShown || !mounted) return;
+    bool ok = false;
+    try { ok = gFFI.serverModel.inputOk; } catch (_) {}
+    if (ok) return; // 이미 켜짐
+    _inputGuideShown = true;
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('터치 제어 권한 켜기'),
+        content: const Text(
+          '상대가 이 화면을 직접 만져서 도와드리려면\n'
+          '권한 하나만 켜면 돼요.\n\n'
+          '아래 [권한 켜기]를 누르면 설정이 열려요.\n'
+          '거기서 "키오스크관리"를 찾아 켜주세요.',
+          style: TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(),
+            child: const Text('나중에'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(c).pop();
+              try {
+                AndroidPermissionManager.startAction(
+                    kActionAccessibilitySettings);
+              } catch (_) {}
+            },
+            child: const Text('권한 켜기'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _hide() {
