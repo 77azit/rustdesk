@@ -26,11 +26,6 @@ class AzitAgent {
   Timer? _reconnectTimer;
 
   Future<void> start() async {
-    // 키오스크는 항상 "피제어 가능" 상태여야 함. RustDesk 모바일은 기본이 제어자모드라
-    // 서비스를 자동시작 안 함 → 코어가 hbbs에 등록 안 됨 → 외부에서 "offline".
-    // 우리가 직접 서비스 시작 → hbbs 등록 + 화면수신 준비(권한은 device-owner/appops 사전부여).
-    _ensureRustDeskService();
-
     String deviceId = '', agentKey = '';
     try {
       final creds = await _native.invokeMethod('get_creds');
@@ -40,20 +35,24 @@ class AzitAgent {
       debugPrint('AZIT: get_creds error $e');
     }
     if (deviceId.isEmpty || agentKey.isEmpty) {
-      // 미등록 → QR+6자리 페어링 화면(제어자가 스캔/입력하면 클레임됨)
+      // 미등록 → "도움 받기" 화면. 프라이버시: 도움받기 누르기 전엔 서비스 안 켬(아무도 못 붙음).
       WidgetsBinding.instance.addPostFrameCallback((_) => _showPairScreen());
       return;
     }
+    // 클레임된 기기 = 항상 피제어 가능. RustDesk 모바일은 기본이 제어자모드라 서비스 자동시작 안 함
+    // → 우리가 직접 시작해야 hbbs 등록+화면수신 가능. + "연결됨" 상태화면(RustDesk 홈 가림).
+    ensureRustDeskService();
     _ensurePermanentPassword();
     _connect(deviceId, agentKey);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showConnectedScreen());
   }
 
   bool _serviceStarted = false;
-  // RustDesk 서비스(코어 server + 화면캡처) 시작 → 기기가 hbbs에 등록되어 외부 접속 수신 가능
-  void _ensureRustDeskService() {
+  // RustDesk 서비스(코어 server + 화면캡처) 시작 → 기기가 hbbs에 등록되어 외부 접속 수신 가능.
+  // 클레임 기기는 start()에서, 미클레임 기기는 "도움 받기" 눌렀을 때만 호출(프라이버시).
+  void ensureRustDeskService() {
     if (_serviceStarted) return;
     _serviceStarted = true;
-    // FFI/엔진 초기화 여유를 두고 시작
     Future.delayed(const Duration(seconds: 2), () async {
       try {
         if (!gFFI.serverModel.isStart) {
@@ -64,6 +63,43 @@ class AzitAgent {
         debugPrint('AZIT: startService error $e');
       }
     });
+  }
+
+  void _showConnectedScreen([int attempt = 0]) {
+    final ctx = globalKey.currentContext;
+    if (ctx == null) {
+      if (attempt < 30) {
+        Future.delayed(const Duration(milliseconds: 400),
+            () => _showConnectedScreen(attempt + 1));
+      }
+      return;
+    }
+    Navigator.of(ctx).push(
+      MaterialPageRoute(builder: (_) => const AzitConnectedScreen()),
+    );
+  }
+
+  // 연결 해제: 서버에서 페어링 제거 + 로컬 자격/신원 초기화 + 서비스 중지 → 다시 처음 상태로
+  Future<void> unpair() async {
+    final deviceKey = bind.mainGetLocalOption(key: 'azit_device_key');
+    try {
+      await http.post(
+        Uri.parse('$kAzitBase/api/pair/unpair'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'deviceKey': deviceKey}),
+      );
+    } catch (_) {}
+    _stopped = true;
+    _reconnectTimer?.cancel();
+    try { _ws?.close(); } catch (_) {}
+    _ws = null;
+    try {
+      await _native.invokeMethod('save_creds', {'deviceId': '', 'agentKey': ''});
+    } catch (_) {}
+    bind.mainSetLocalOption(key: 'azit_device_key', value: ''); // 새 신원으로
+    try { await gFFI.serverModel.stopService(); } catch (_) {}
+    _serviceStarted = false; // 다시 도움받기 누르면 재시작 가능
+    _stopped = false;
   }
 
   bool _pairPushed = false;

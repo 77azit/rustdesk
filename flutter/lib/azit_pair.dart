@@ -43,6 +43,8 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
 
   void _reveal() {
     if (_revealed || _claimed) return;
+    // 프라이버시: "도움 받기"를 눌렀을 때 비로소 피제어 서비스를 켬(이전엔 아무도 못 붙음)
+    AzitAgent.instance.ensureRustDeskService();
     setState(() {
       _revealed = true;
       _status = '준비 중...';
@@ -364,6 +366,95 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
   }
 }
 
+// ========================= 연결된 기기: 상태 화면 + 연결 해제 =========================
+class AzitConnectedScreen extends StatelessWidget {
+  const AzitConnectedScreen({Key? key}) : super(key: key);
+
+  Future<void> _unpair(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('연결 해제'),
+        content: const Text(
+          '이 기기의 원격 연결을 끊을까요?\n'
+          '해제하면 더 이상 아무도 이 기기에 연결할 수 없어요.\n'
+          '(다시 도움받으려면 "도움 받기"를 누르면 돼요)',
+          style: TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(c).pop(false),
+              child: const Text('취소')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('연결 해제'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AzitAgent.instance.unpair();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AzitPairScreen()),
+      (route) => route.isFirst,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.verified_user,
+                    color: Color(0xFF22a06b), size: 96),
+                const SizedBox(height: 20),
+                const Text('이 기기는 연결되어 있어요',
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87)),
+                const SizedBox(height: 10),
+                const Text('필요할 때 원격으로 도와드릴 수 있어요.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: Colors.black54)),
+                const SizedBox(height: 48),
+                SizedBox(
+                  width: 240,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.link_off, color: Colors.red),
+                    label: const Text('연결 해제',
+                        style: TextStyle(fontSize: 16, color: Colors.red)),
+                    style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red)),
+                    onPressed: () => _unpair(context),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextButton.icon(
+                  icon: const Icon(Icons.cast_connected),
+                  label: const Text('다른 기기 제어하기'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AzitControllerScreen()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ========================= 제어자: 로그인 → 스캔/입력 → 연결 =========================
 class AzitControllerScreen extends StatefulWidget {
   const AzitControllerScreen({Key? key}) : super(key: key);
@@ -541,6 +632,48 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     }
     // RustDesk 네이티브 연결 경로 — 비번 자동 주입(프롬프트 없음)
     connect(context, id, password: password, isSharedPassword: false);
+  }
+
+  // 기기 연결 해제(목록에서 제거)
+  Future<void> _deleteDevice(String deviceId, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('연결 해제'),
+        content: Text('"$name"의 연결을 해제할까요? 목록에서 제거됩니다.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(c).pop(false),
+              child: const Text('취소')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('해제'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _busy = true;
+      _msg = '';
+    });
+    try {
+      final r = await http.delete(
+          Uri.parse('$kAzitBase/api/devices/$deviceId'),
+          headers: _auth);
+      if (r.statusCode == 200) {
+        await _loadDevices();
+        setState(() => _msg = '연결 해제됨');
+      } else {
+        final d = jsonDecode(r.body) as Map<String, dynamic>;
+        setState(() => _msg = d['error']?.toString() ?? '해제 실패');
+      }
+    } catch (_) {
+      setState(() => _msg = '네트워크 오류');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _scan() async {
@@ -721,11 +854,24 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
                     color: online ? const Color(0xFF22a06b) : Colors.grey),
                 title: Text(d['name']?.toString() ?? '기기'),
                 subtitle: Text(online ? '온라인' : '오프라인'),
-                trailing: ElevatedButton(
-                  onPressed: (_busy || !online)
-                      ? null
-                      : () => _reconnect(d['id'].toString()),
-                  child: const Text('접속'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ElevatedButton(
+                      onPressed: (_busy || !online)
+                          ? null
+                          : () => _reconnect(d['id'].toString()),
+                      child: const Text('접속'),
+                    ),
+                    IconButton(
+                      tooltip: '연결 해제',
+                      icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                      onPressed: _busy
+                          ? null
+                          : () => _deleteDevice(
+                              d['id'].toString(), d['name']?.toString() ?? '기기'),
+                    ),
+                  ],
                 ),
               ),
             );
