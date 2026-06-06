@@ -14,6 +14,30 @@ import 'package:flutter_hbb/common.dart'; // connect(), showToast, AndroidPermis
 import 'package:flutter_hbb/consts.dart'; // kActionAccessibilitySettings
 import 'package:flutter_hbb/azit_agent.dart'; // AzitAgent, kAzitBase
 
+// 앱 홈 상태: null=확인중, true=연결됨, false=미연결. AzitAgent가 갱신.
+final ValueNotifier<bool?> azitClaimed = ValueNotifier<bool?>(null);
+
+// ========================= 우리 자체 홈 (RustDesk HomePage 완전 대체) =========================
+// 가림막이 아니라 진짜 교체 — 밑에 RustDesk 홈이 존재하지 않음.
+class AzitHome extends StatelessWidget {
+  const AzitHome({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool?>(
+      valueListenable: azitClaimed,
+      builder: (c, claimed, _) {
+        if (claimed == null) {
+          return const Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return claimed ? const AzitConnectedScreen() : const AzitPairScreen();
+      },
+    );
+  }
+}
+
 // ========================= 피제어 기기: QR + 6자리 표시 =========================
 class AzitPairScreen extends StatefulWidget {
   const AzitPairScreen({Key? key}) : super(key: key);
@@ -395,11 +419,7 @@ class AzitConnectedScreen extends StatelessWidget {
     );
     if (ok != true) return;
     await AzitAgent.instance.unpair();
-    if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AzitPairScreen()),
-      (route) => route.isFirst,
-    );
+    // AzitHome이 azitClaimed=false를 감지해 자동으로 "도움 받기" 화면으로 전환(별도 네비 불필요)
   }
 
   @override

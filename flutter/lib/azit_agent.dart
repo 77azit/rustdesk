@@ -34,17 +34,17 @@ class AzitAgent {
     } catch (e) {
       debugPrint('AZIT: get_creds error $e');
     }
-    if (deviceId.isEmpty || agentKey.isEmpty) {
-      // 미등록 → "도움 받기" 화면. 프라이버시: 도움받기 누르기 전엔 서비스 안 켬(아무도 못 붙음).
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showPairScreen());
+    final claimed = deviceId.isNotEmpty && agentKey.isNotEmpty;
+    azitClaimed.value = claimed; // 우리 자체 홈(AzitHome)이 이 값으로 화면 결정
+    if (!claimed) {
+      // 미등록 → AzitHome이 "도움 받기" 표시. 프라이버시: 도움받기 누르기 전엔 서비스 안 켬.
       return;
     }
-    // 클레임된 기기 = 항상 피제어 가능. RustDesk 모바일은 기본이 제어자모드라 서비스 자동시작 안 함
-    // → 우리가 직접 시작해야 hbbs 등록+화면수신 가능. + "연결됨" 상태화면(RustDesk 홈 가림).
+    // 클레임 기기 = 항상 피제어 가능. RustDesk 모바일은 기본이 제어자모드라 서비스 자동시작 안 함
+    // → 우리가 직접 시작해야 hbbs 등록+화면수신 가능. AzitHome은 AzitConnectedScreen 표시.
     ensureRustDeskService();
     _ensurePermanentPassword();
     _connect(deviceId, agentKey);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showConnectedScreen());
   }
 
   bool _serviceStarted = false;
@@ -100,6 +100,7 @@ class AzitAgent {
     try { await gFFI.serverModel.stopService(); } catch (_) {}
     _serviceStarted = false; // 다시 도움받기 누르면 재시작 가능
     _stopped = false;
+    azitClaimed.value = false; // AzitHome → 도움받기(미연결) 화면으로 전환
   }
 
   bool _pairPushed = false;
@@ -139,6 +140,7 @@ class AzitAgent {
     } catch (_) {}
     _ensurePermanentPassword();
     _connect(deviceId, agentKey);
+    azitClaimed.value = true; // AzitHome → 연결됨 화면으로 전환
   }
 
   // 무인 접속용 비밀번호 보장(없으면 생성·저장·적용)
