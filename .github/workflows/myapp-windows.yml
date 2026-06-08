@@ -105,6 +105,8 @@ jobs:
         run: |
           python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+          # 실행파일을 우리 브랜드로 리네임 (kioskmanager.exe → 키오스크관리.exe)
+          if (Test-Path ./rustdesk/kioskmanager.exe) { Rename-Item ./rustdesk/kioskmanager.exe "키오스크관리.exe" }
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
           Expand-Archive usbmmidd_v2.zip -DestinationPath .
           Remove-Item -Path usbmmidd_v2\Win32 -Recurse

@@ -7,12 +7,30 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart' as crypto; // sha256 (2차인증 해시)
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter_hbb/models/platform_model.dart'; // bind
 import 'package:flutter_hbb/common.dart'; // connect(), showToast, AndroidPermissionManager, gFFI
 import 'package:flutter_hbb/consts.dart'; // kActionAccessibilitySettings
 import 'package:flutter_hbb/azit_agent.dart'; // AzitAgent, kAzitBase
+
+// 2차인증(PIN·패턴) 정본 서버 — db.77azit.com. (제어자 로그인 = 이 시스템 단독)
+const String kAuthBase = 'https://db.77azit.com';
+
+// 브랜드 색상
+const Color kBrand = Color(0xFF0071FF);
+const Color kBrandDark = Color(0xFF0059CC);
+
+String _sha256hex(String s) =>
+    crypto.sha256.convert(utf8.encode(s)).toString();
+
+// pin_hash = sha256( canonical + salt ),  salt = sha256("77azit_"+email)[:16]
+// canonical: 패턴 = 점인덱스 '-' join("0-4-8") / PIN = 숫자문자열("1234")
+String azitPinHash(String secretCanonical, String email) {
+  final salt = _sha256hex('77azit_${email.toLowerCase().trim()}').substring(0, 16);
+  return _sha256hex(secretCanonical + salt);
+}
 
 // 앱 홈 상태: null=확인중, true=연결됨, false=미연결. AzitAgent가 갱신.
 final ValueNotifier<bool?> azitClaimed = ValueNotifier<bool?>(null);
@@ -490,6 +508,10 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
   String _msg = '';
   bool _busy = false;
   List<Map<String, dynamic>> _devices = [];
+  // 2차인증 스테이지: 'email'(이메일 입력) | 'verify'(PIN/패턴) | 'nopin'(미설정 차단)
+  String _stage = 'email';
+  String _method = ''; // 'pin' | 'pattern'
+  String _authedEmail = '';
 
   @override
   void initState() {
@@ -501,24 +523,63 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
   Map<String, String> get _auth =>
       {'Content-Type': 'application/json', 'Authorization': 'Bearer $_token'};
 
-  Future<void> _login() async {
+  // 1단계: 이메일 → 2차인증 설정 여부/방식 확인 (db.77azit.com)
+  Future<void> _checkEmail() async {
+    final email = _email.text.trim().toLowerCase();
+    if (!email.contains('@')) {
+      setState(() => _msg = '이메일을 정확히 입력하세요');
+      return;
+    }
     setState(() {
       _busy = true;
       _msg = '';
     });
     try {
-      final r = await http.post(
-        Uri.parse('$kAzitBase/api/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': _email.text.trim(), 'pin': _pin.text.trim()}),
-      );
+      final r = await http.get(Uri.parse(
+          '$kAuthBase/api/auth/check-pin-exists?email=${Uri.encodeQueryComponent(email)}'));
+      if (r.statusCode != 200) {
+        setState(() => _msg = '확인 실패. 잠시 후 다시');
+        return;
+      }
       final d = jsonDecode(r.body) as Map<String, dynamic>;
+      if (d['exists'] == true) {
+        setState(() {
+          _authedEmail = email;
+          _method = (d['method'] ?? 'pin').toString();
+          _stage = 'verify';
+          _pin.clear();
+        });
+      } else {
+        setState(() => _stage = 'nopin');
+      }
+    } catch (_) {
+      setState(() => _msg = '네트워크 오류');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // 2단계: PIN/패턴 → verify-pin → 토큰(스코프=토큰의 email). 해시 정본 azitPinHash.
+  Future<void> _verify(String canonical) async {
+    setState(() {
+      _busy = true;
+      _msg = '';
+    });
+    try {
+      final hash = azitPinHash(canonical, _authedEmail);
+      final r = await http.post(
+        Uri.parse('$kAuthBase/api/auth/verify-pin'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': _authedEmail, 'pin_hash': hash}),
+      );
       if (r.statusCode == 200) {
-        _token = d['token'] as String;
+        final d = jsonDecode(r.body) as Map<String, dynamic>;
+        _token = (d['access_token'] ?? d['token'] ?? '').toString();
         bind.mainSetLocalOption(key: 'azit_token', value: _token);
         await _loadDevices();
+        if (mounted) setState(() {});
       } else {
-        setState(() => _msg = d['error']?.toString() ?? '로그인 실패');
+        setState(() => _msg = '2차인증이 맞지 않아요');
       }
     } catch (_) {
       setState(() => _msg = '네트워크 오류');
@@ -532,6 +593,10 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     setState(() {
       _token = '';
       _devices = [];
+      _stage = 'email';
+      _method = '';
+      _authedEmail = '';
+      _pin.clear();
     });
   }
 
@@ -709,194 +774,465 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('기기 제어'),
-        actions: [
-          if (_token.isNotEmpty)
-            IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF4F6FA),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: _token.isEmpty ? _buildLogin() : _buildControl(),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: _token.isEmpty ? _buildLogin() : _buildControl(),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLogin() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 12),
-        const Text('로그인',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+  // ---------------- 디자인 헬퍼 ----------------
+  Widget _card(Widget child) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 22,
+                offset: const Offset(0, 8))
+          ],
+        ),
+        child: child,
+      );
+
+  InputDecoration _dec(String hint, {Widget? icon}) => InputDecoration(
+        hintText: hint,
+        prefixIcon: icon,
+        filled: true,
+        fillColor: const Color(0xFFF1F4F8),
+        counterText: '',
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      );
+
+  Widget _primaryBtn(String label, VoidCallback? onTap) => SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: kBrand,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              textStyle:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          onPressed: (_busy || onTap == null) ? null : onTap,
+          child: _busy
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : Text(label),
+        ),
+      );
+
+  Widget _ghostBtn(String label, VoidCallback? onTap) => SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+              foregroundColor: kBrand,
+              side: const BorderSide(color: kBrand, width: 1.4),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              textStyle:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          onPressed: (_busy || onTap == null) ? null : onTap,
+          child: Text(label),
+        ),
+      );
+
+  Widget _errText() => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(_msg,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFFE03131), fontSize: 13)),
+      );
+
+  Widget _brandHeader() => Column(children: [
+        Container(
+          width: 66,
+          height: 66,
+          decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [kBrand, kBrandDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                    color: kBrand.withOpacity(0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8))
+              ]),
+          child:
+              const Icon(Icons.cast_connected, color: Colors.white, size: 34),
+        ),
         const SizedBox(height: 16),
-        TextField(
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-              labelText: '이메일', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _pin,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          decoration:
-              const InputDecoration(labelText: 'PIN', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        if (_msg.isNotEmpty)
-          Text(_msg, style: const TextStyle(color: Colors.red)),
-        const SizedBox(height: 12),
-        ElevatedButton(
-          onPressed: _busy ? null : _login,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: _busy
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('로그인'),
-          ),
-        ),
-      ],
-    );
+        const Text('키오스크관리',
+            style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        const Text('원격 도움 · 안전하게 연결',
+            style: TextStyle(color: Colors.black54, fontSize: 13)),
+      ]);
+
+  Widget _buildLogin() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SizedBox(height: 24),
+      _brandHeader(),
+      const SizedBox(height: 28),
+      _card(_stage == 'nopin'
+          ? _loginNoPin()
+          : _stage == 'verify'
+              ? _loginVerify()
+              : _loginEmail()),
+      const SizedBox(height: 24),
+    ]);
   }
+
+  Widget _loginEmail() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('로그인',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          const Text('철지트 계정 이메일로 들어갑니다',
+              style: TextStyle(color: Colors.black54, fontSize: 13)),
+          const SizedBox(height: 18),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _checkEmail(),
+            decoration: _dec('이메일', icon: const Icon(Icons.mail_outline)),
+          ),
+          if (_msg.isNotEmpty) _errText(),
+          const SizedBox(height: 18),
+          _primaryBtn('다음', _checkEmail),
+        ],
+      );
+
+  Widget _loginNoPin() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Icon(Icons.lock_outline, size: 42, color: kBrand),
+          const SizedBox(height: 14),
+          const Text('2차인증을 먼저 설정하세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          const Text('철지트 관리자 페이지에서 PIN 또는 패턴을\n먼저 등록한 뒤 다시 시도해주세요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.5)),
+          const SizedBox(height: 20),
+          _ghostBtn('이메일 다시 입력', () => setState(() {
+                _stage = 'email';
+                _msg = '';
+              })),
+        ],
+      );
+
+  Widget _loginVerify() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            InkWell(
+              onTap: _busy
+                  ? null
+                  : () => setState(() {
+                        _stage = 'email';
+                        _msg = '';
+                      }),
+              borderRadius: BorderRadius.circular(8),
+              child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.arrow_back, size: 20)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text(_authedEmail,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    overflow: TextOverflow.ellipsis)),
+          ]),
+          const SizedBox(height: 18),
+          if (_method == 'pattern') ...[
+            const Text('패턴을 그려주세요',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 18),
+            Center(
+              child: PatternPad(
+                enabled: !_busy,
+                onComplete: (dots) {
+                  if (dots.length >= 4) {
+                    _verify(dots.join('-'));
+                  } else {
+                    setState(() => _msg = '점을 4개 이상 이어주세요');
+                  }
+                },
+              ),
+            ),
+            if (_busy)
+              const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: Center(
+                      child: SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2)))),
+          ] else ...[
+            const Text('PIN을 입력하세요',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _pin,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 26, letterSpacing: 10, fontWeight: FontWeight.w700),
+              onSubmitted: (v) => _verify(v.trim()),
+              decoration: _dec('· · · ·'),
+            ),
+            const SizedBox(height: 16),
+            _primaryBtn('확인', () => _verify(_pin.text.trim())),
+          ],
+          if (_msg.isNotEmpty) _errText(),
+        ],
+      );
 
   Widget _buildControl() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 8),
-        const Text('새 기기 연결',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        // QR 스캔은 카메라 있는 모바일만(데스크탑은 6자리 입력)
-        if (!isDesktop) ...[
-          ElevatedButton.icon(
-            onPressed: _busy ? null : _scan,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('QR 스캔하기'),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _code,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: const InputDecoration(
-                  labelText: '6자리 코드',
-                  counterText: '',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            ElevatedButton(
-              onPressed: (_busy || _awaitVerify.isNotEmpty)
-                  ? null
-                  : () => _redeem(_code.text),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                child: Text('연결'),
-              ),
-            ),
-          ],
-        ),
-        if (_awaitVerify.isNotEmpty)
+        Row(children: [
           Container(
-            margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.all(16),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFeef3ff),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF2d6cdf)),
-            ),
-            child: Column(
-              children: [
-                const Text('기기에서 [허용]을 눌러주세요',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                const SizedBox(height: 4),
-                const Text('아래 확인번호가 기기 화면과 같은지 확인',
-                    style: TextStyle(fontSize: 12, color: Colors.black54)),
-                const SizedBox(height: 6),
-                Text(_awaitVerify,
-                    style: const TextStyle(
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 8,
-                        color: Color(0xFF2d6cdf))),
-                const SizedBox(height: 6),
-                const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-              ],
-            ),
+                gradient: const LinearGradient(colors: [kBrand, kBrandDark]),
+                borderRadius: BorderRadius.circular(12)),
+            child:
+                const Icon(Icons.cast_connected, color: Colors.white, size: 22),
           ),
-        if (_msg.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(_msg, style: const TextStyle(color: Colors.red)),
-          ),
-        const Divider(height: 36),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          const SizedBox(width: 12),
+          const Expanded(
+              child: Text('키오스크관리',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800))),
+          IconButton(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout, size: 20),
+              color: Colors.black45,
+              tooltip: '로그아웃'),
+        ]),
+        const SizedBox(height: 18),
+        _card(Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('내 기기',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            IconButton(
-                onPressed: _loadDevices, icon: const Icon(Icons.refresh)),
-          ],
-        ),
-        if (_devices.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('아직 연결한 기기가 없어요. 위에서 QR/코드로 연결하세요.',
-                style: TextStyle(color: Colors.black54)),
-          )
-        else
-          ..._devices.map((d) {
-            final online = d['online'] == true;
-            return Card(
-              child: ListTile(
-                leading: Icon(Icons.devices,
-                    color: online ? const Color(0xFF22a06b) : Colors.grey),
-                title: Text(d['name']?.toString() ?? '기기'),
-                subtitle: Text(online ? '온라인' : '오프라인'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ElevatedButton(
-                      onPressed: (_busy || !online)
-                          ? null
-                          : () => _reconnect(d['id'].toString()),
-                      child: const Text('접속'),
-                    ),
-                    IconButton(
-                      tooltip: '연결 해제',
-                      icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                      onPressed: _busy
-                          ? null
-                          : () => _deleteDevice(
-                              d['id'].toString(), d['name']?.toString() ?? '기기'),
-                    ),
-                  ],
+            const Text('새 기기 연결',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            const Text('도움받는 기기 화면의 6자리 코드를 입력하세요',
+                style: TextStyle(color: Colors.black54, fontSize: 12)),
+            const SizedBox(height: 16),
+            if (!isDesktop) ...[
+              _ghostBtn('📷  QR 스캔하기', _scan),
+              const SizedBox(height: 12),
+            ],
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  style: const TextStyle(
+                      fontSize: 20,
+                      letterSpacing: 4,
+                      fontWeight: FontWeight.w700),
+                  decoration: _dec('6자리 코드'),
                 ),
               ),
-            );
-          }),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kBrand,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(horizontal: 22)),
+                  onPressed: (_busy || _awaitVerify.isNotEmpty)
+                      ? null
+                      : () => _redeem(_code.text),
+                  child: const Text('연결',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ]),
+            if (_awaitVerify.isNotEmpty) _verifyBanner(),
+            if (_msg.isNotEmpty) _errText(),
+          ],
+        )),
+        const SizedBox(height: 22),
+        Row(children: [
+          const Text('내 기기',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const Spacer(),
+          IconButton(
+              onPressed: _busy ? null : _loadDevices,
+              icon: const Icon(Icons.refresh, size: 20),
+              color: Colors.black45),
+        ]),
+        const SizedBox(height: 6),
+        if (_devices.isEmpty)
+          _emptyDevices()
+        else
+          ..._devices.map(_deviceCard),
+        const SizedBox(height: 24),
       ],
+    );
+  }
+
+  Widget _verifyBanner() => Container(
+        margin: const EdgeInsets.only(top: 16),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF4FF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kBrand.withOpacity(0.4)),
+        ),
+        child: Column(children: [
+          const Text('기기에서 [허용]을 눌러주세요',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 4),
+          const Text('아래 확인번호가 기기 화면과 같은지 확인하세요',
+              style: TextStyle(fontSize: 12, color: Colors.black54)),
+          const SizedBox(height: 10),
+          Text(_awaitVerify,
+              style: const TextStyle(
+                  fontSize: 42,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 10,
+                  color: kBrand)),
+          const SizedBox(height: 8),
+          const SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+        ]),
+      );
+
+  Widget _emptyDevices() => Container(
+        padding: const EdgeInsets.symmetric(vertical: 30),
+        alignment: Alignment.center,
+        child: Column(children: const [
+          Icon(Icons.devices_other, size: 40, color: Colors.black26),
+          SizedBox(height: 10),
+          Text('아직 연결한 기기가 없어요',
+              style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+          SizedBox(height: 4),
+          Text('위에서 6자리 코드로 기기를 연결하세요',
+              style: TextStyle(color: Colors.black38, fontSize: 12)),
+        ]),
+      );
+
+  Widget _deviceCard(Map<String, dynamic> d) {
+    final online = d['online'] == true;
+    final name = d['name']?.toString() ?? '기기';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4))
+        ],
+      ),
+      child: Row(children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+              color: (online ? kBrand : Colors.grey).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.tablet_android,
+              color: online ? kBrand : Colors.grey, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name,
+                  style:
+                      const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 3),
+              Row(children: [
+                Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                        color:
+                            online ? const Color(0xFF22C55E) : Colors.grey,
+                        shape: BoxShape.circle)),
+                const SizedBox(width: 5),
+                Text(online ? '온라인' : '오프라인',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: online
+                            ? const Color(0xFF16A34A)
+                            : Colors.grey)),
+              ]),
+            ],
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: kBrand,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
+          onPressed:
+              (_busy || !online) ? null : () => _reconnect(d['id'].toString()),
+          child:
+              const Text('접속', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        IconButton(
+          tooltip: '연결 해제',
+          icon: const Icon(Icons.more_vert, size: 20, color: Colors.black26),
+          onPressed:
+              _busy ? null : () => _deleteDevice(d['id'].toString(), name),
+        ),
+      ]),
     );
   }
 
@@ -907,6 +1243,116 @@ class _AzitControllerScreenState extends State<AzitControllerScreen> {
     _code.dispose();
     super.dispose();
   }
+}
+
+// ========================= 패턴 입력 패드 (3×3 드래그, 점 0~8 = 정본 "0-4-8") =========
+class PatternPad extends StatefulWidget {
+  final bool enabled;
+  final void Function(List<int> dots) onComplete;
+  const PatternPad({Key? key, required this.onComplete, this.enabled = true})
+      : super(key: key);
+  @override
+  State<PatternPad> createState() => _PatternPadState();
+}
+
+class _PatternPadState extends State<PatternPad> {
+  static const double _size = 280;
+  final List<int> _selected = [];
+  Offset? _current;
+  final List<Offset> _centers = [];
+
+  void _initCenters() {
+    if (_centers.isNotEmpty) return;
+    const pad = 40.0;
+    final step = (_size - pad * 2) / 2;
+    for (int r = 0; r < 3; r++) {
+      for (int c = 0; c < 3; c++) {
+        _centers.add(Offset(pad + c * step, pad + r * step));
+      }
+    }
+  }
+
+  int? _hit(Offset p) {
+    for (int i = 0; i < 9; i++) {
+      if ((p - _centers[i]).distance < 28) return i;
+    }
+    return null;
+  }
+
+  void _update(Offset local) {
+    _current = local;
+    final h = _hit(local);
+    if (h != null && !_selected.contains(h)) {
+      _selected.add(h);
+    }
+    setState(() {});
+  }
+
+  void _end() {
+    final dots = List<int>.from(_selected);
+    setState(() {
+      _selected.clear();
+      _current = null;
+    });
+    if (dots.isNotEmpty) widget.onComplete(dots);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _initCenters();
+    return IgnorePointer(
+      ignoring: !widget.enabled,
+      child: GestureDetector(
+        onPanStart: (d) {
+          _selected.clear();
+          _update(d.localPosition);
+        },
+        onPanUpdate: (d) => _update(d.localPosition),
+        onPanEnd: (_) => _end(),
+        child: CustomPaint(
+          size: const Size(_size, _size),
+          painter: _PatternPainter(_centers, _selected, _current),
+        ),
+      ),
+    );
+  }
+}
+
+class _PatternPainter extends CustomPainter {
+  final List<Offset> centers;
+  final List<int> selected;
+  final Offset? current;
+  _PatternPainter(this.centers, this.selected, this.current);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = kBrand
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    for (int i = 0; i < selected.length - 1; i++) {
+      canvas.drawLine(centers[selected[i]], centers[selected[i + 1]], line);
+    }
+    if (selected.isNotEmpty && current != null) {
+      canvas.drawLine(centers[selected.last], current!, line);
+    }
+    for (int i = 0; i < 9; i++) {
+      final on = selected.contains(i);
+      if (on) {
+        canvas.drawCircle(
+            centers[i],
+            22,
+            Paint()..color = kBrand.withOpacity(0.12));
+      }
+      canvas.drawCircle(centers[i], on ? 11 : 8,
+          Paint()..color = on ? kBrand : const Color(0xFFB7C2D0));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PatternPainter old) =>
+      old.selected.length != selected.length || old.current != current;
 }
 
 // ========================= QR 스캐너 (코드 문자열 반환) =========================
