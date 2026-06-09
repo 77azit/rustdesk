@@ -74,14 +74,19 @@ class MainService : Service() {
             Log.d(logTag,"Turn on Screen")
             wakeLock.acquire(5000)
         } else {
-            when (kind) {
-                0 -> { // touch
-                    InputService.ctx?.onTouchInput(mask, x, y)
-                }
-                1 -> { // mouse
-                    InputService.ctx?.onMouseInput(mask, x, y)
-                }
-                else -> {
+            // 입력 처리(touchPath 수정 + dispatchGesture)를 반드시 메인 스레드에서 한다.
+            // 코어가 이 콜백을 워커 스레드로 호출하는데, 거기서 처리하면 제스처 경로를
+            // 동시에 만지며 dispatchGesture가 즉시 onCancelled로 취소된다(탭 안 먹는 원인).
+            Handler(Looper.getMainLooper()).post {
+                when (kind) {
+                    0 -> { // touch
+                        InputService.ctx?.onTouchInput(mask, x, y)
+                    }
+                    1 -> { // mouse
+                        InputService.ctx?.onMouseInput(mask, x, y)
+                    }
+                    else -> {
+                    }
                 }
             }
         }
