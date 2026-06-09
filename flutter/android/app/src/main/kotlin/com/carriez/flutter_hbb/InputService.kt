@@ -327,8 +327,11 @@ class InputService : AccessibilityService() {
             stroke?.let {
                 val builder = GestureDescription.Builder()
                 builder.addStroke(it)
-                Log.d(logTag, "doDispatchGesture x:$x y:$y time:$duration")
-                dispatchGesture(builder.build(), null, null)
+                val ok = dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
+                    override fun onCompleted(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCompleted x:$x y:$y") }
+                    override fun onCancelled(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCancelled x:$x y:$y") }
+                }, null)
+                Log.d(logTag, "AZTOUCH dispatch x:$x y:$y dur:$duration scale:${SCREEN_INFO.scale} w:${SCREEN_INFO.width} h:${SCREEN_INFO.height} ret:$ok")
             }
         } catch (e: Exception) {
             Log.e(logTag, "doDispatchGesture, willContinue:$willContinue, error:$e")
