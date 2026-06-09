@@ -189,9 +189,11 @@ class ServerModel with ChangeNotifier {
       });
     }
 
-    // Initial keyboard status is off on mobile
+    // 키오스크 원격관리 앱은 원격 터치/입력 제어가 본질이므로 모바일에서도 입력을 기본 ON.
+    // (원본 RustDesk는 모바일에서 'N'으로 두고 사용자가 "입력 제어" 토글을 켜야 하지만,
+    //  우리는 홈 UI를 갈아엎어 그 토글이 없으므로 여기서 'Y'로 박지 않으면 터치가 영구 차단됨.)
     if (isMobile) {
-      bind.mainSetOption(key: kOptionEnableKeyboard, value: 'N');
+      bind.mainSetOption(key: kOptionEnableKeyboard, value: defaultOptionYes);
     }
   }
 

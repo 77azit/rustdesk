@@ -10,7 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_hbb/models/platform_model.dart'; // bind
-import 'package:flutter_hbb/common.dart'; // globalKey
+import 'package:flutter_hbb/common.dart'; // globalKey, defaultOptionYes
+import 'package:flutter_hbb/consts.dart'; // kOptionEnableKeyboard
 import 'package:flutter_hbb/azit_pair.dart'; // AzitPairScreen (QR+6자리)
 
 const String kAzitBase = 'https://remote.77azit.com/panel';
@@ -62,6 +63,15 @@ class AzitAgent {
         if (!gFFI.serverModel.isStart) {
           await gFFI.serverModel.startService();
           debugPrint('AZIT: RustDesk service started → hbbs 등록');
+        }
+        // ★ 원격 입력(터치/키보드) 제어 항상 ON. RustDesk 모바일 기본은 'N'(입력 차단)이라
+        //   이걸 안 켜면 화면은 보여도 원격 터치가 시스템에서 거부/취소된다(onCancelled).
+        //   공식 앱은 "화면 공유 → 입력 제어" 토글로 켜지만 우리 홈엔 그 토글이 없으므로 필수.
+        try {
+          bind.mainSetOption(key: kOptionEnableKeyboard, value: defaultOptionYes);
+          gFFI.serverModel.changeStatue('input', true);
+        } catch (e) {
+          debugPrint('AZIT: enable input control error $e');
         }
       } catch (e) {
         debugPrint('AZIT: startService error $e');
