@@ -327,11 +327,17 @@ class InputService : AccessibilityService() {
             stroke?.let {
                 val builder = GestureDescription.Builder()
                 builder.addStroke(it)
-                val ok = dispatchGesture(builder.build(), object : AccessibilityService.GestureResultCallback() {
-                    override fun onCompleted(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCompleted x:$x y:$y") }
-                    override fun onCancelled(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCancelled x:$x y:$y") }
-                }, null)
-                Log.d(logTag, "AZTOUCH dispatch x:$x y:$y dur:$duration scale:${SCREEN_INFO.scale} w:${SCREEN_INFO.width} h:${SCREEN_INFO.height} ret:$ok")
+                val gesture = builder.build()
+                // 제스처는 반드시 메인(UI) 스레드에서 dispatch한다. 코어가 입력을 백그라운드
+                // 워커 스레드로 전달하는데, 거기서 dispatchGesture를 호출하면 일부 환경에서
+                // 즉시 onCancelled로 취소돼 탭이 안 먹는다(공식 RustDesk와의 실동작 차이로 추정).
+                Handler(Looper.getMainLooper()).post {
+                    val ok = dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                        override fun onCompleted(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCompleted x:$x y:$y") }
+                        override fun onCancelled(d: GestureDescription?) { Log.d(logTag, "AZTOUCH onCancelled x:$x y:$y") }
+                    }, null)
+                    Log.d(logTag, "AZTOUCH dispatch(main) x:$x y:$y dur:$duration ret:$ok")
+                }
             }
         } catch (e: Exception) {
             Log.e(logTag, "doDispatchGesture, willContinue:$willContinue, error:$e")
