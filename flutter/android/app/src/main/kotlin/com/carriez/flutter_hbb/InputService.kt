@@ -340,16 +340,13 @@ class InputService : AccessibilityService() {
 
     @RequiresApi(Build.VERSION_CODES.N)
     private fun continueGesture(x: Int, y: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            doDispatchGesture(x, y, true)
-            touchPath.reset()
-            touchPath.moveTo(x.toFloat(), y.toFloat())
-            lastTouchGestureStartTime = System.currentTimeMillis()
-            lastX = x
-            lastY = y
-        } else {
-            touchPath.lineTo(x.toFloat(), y.toFloat())
-        }
+        // 좌표를 경로에 누적만 하고, 실제 dispatchGesture는 endGesture(손 뗌)에서 한 번만 한다.
+        // (이동마다 dispatchGesture를 연발하면 새 제스처가 직전 제스처를 즉시 취소(onCancelled)시켜
+        //  단 하나도 완성되지 못해 탭이 등록 안 되는 버그. 회전 키오스크/빠른 이동 기기에서 재현됨.
+        //  누적 후 1회 디스패치하면 겹침 없이 완성되어 탭/드래그가 정상 동작.)
+        touchPath.lineTo(x.toFloat(), y.toFloat())
+        lastX = x
+        lastY = y
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
