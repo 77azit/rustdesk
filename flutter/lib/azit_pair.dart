@@ -463,9 +463,26 @@ class AzitConnectedScreen extends StatelessWidget {
                 const Text('필요할 때 원격으로 도와드릴 수 있어요.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 15, color: Colors.black54)),
-                const SizedBox(height: 48),
+                const SizedBox(height: 40),
                 SizedBox(
-                  width: 240,
+                  width: 260,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.touch_app),
+                    label: const Text('원격 터치 권한 설정',
+                        style: TextStyle(fontSize: 16)),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0071FF),
+                        foregroundColor: Colors.white),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const AzitPermissionScreen()),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: 260,
                   height: 56,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.link_off, color: Colors.red),
@@ -488,6 +505,224 @@ class AzitConnectedScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ===================== 원격 제어 권한 설정 =====================
+// 하단: 일반 기기 표준 권한(화면공유 + 입력제어=접근성) — RustDesk 로직 그대로 → 폰 등 정상기기 해결
+// 상단: 터치 차단 기기(태블릿/상업용 디스플레이)용 고급 입력 모드(권한 주입/Shizuku) 안내
+class AzitPermissionScreen extends StatefulWidget {
+  const AzitPermissionScreen({Key? key}) : super(key: key);
+  @override
+  State<AzitPermissionScreen> createState() => _AzitPermissionScreenState();
+}
+
+class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
+  static const _brand = Color(0xFF0071FF);
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    // 접근성 설정 화면 다녀온 뒤 상태 갱신용 폴링
+    _poll = Timer.periodic(
+        const Duration(milliseconds: 800), (_) => mounted ? setState(() {}) : null);
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sm = gFFI.serverModel;
+    bool mediaOk = false, inputOk = false;
+    try { mediaOk = sm.mediaOk; } catch (_) {}
+    try { inputOk = sm.inputOk; } catch (_) {}
+    final ready = mediaOk && inputOk;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F8FB),
+      appBar: AppBar(
+        title: const Text('원격 제어 권한 설정'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0.5,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _banner(ready),
+          const SizedBox(height: 22),
+          const Text('기본 권한 (일반 기기)',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black54)),
+          const SizedBox(height: 10),
+          _permTile(
+            icon: Icons.screen_share,
+            title: '화면 공유',
+            desc: '원격으로 이 기기 화면을 보려면 필요',
+            on: mediaOk,
+            onEnable: () async {
+              try { await sm.toggleService(); } catch (_) {}
+              if (mounted) setState(() {});
+            },
+          ),
+          _permTile(
+            icon: Icons.touch_app,
+            title: '입력 제어 (원격 터치)',
+            desc: '원격으로 이 기기를 터치 제어하려면 켜세요',
+            on: inputOk,
+            onEnable: () async {
+              try { await sm.toggleInput(); } catch (_) {}
+              if (mounted) setState(() {});
+            },
+          ),
+          const SizedBox(height: 28),
+          _blockedCard(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _banner(bool ready) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: ready ? const Color(0xFFE7F7EF) : const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(children: [
+        Icon(ready ? Icons.check_circle : Icons.info_outline,
+            color: ready ? const Color(0xFF22a06b) : const Color(0xFFE08600)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            ready
+                ? '원격 제어 준비 완료 — 화면 공유 + 입력 제어 모두 켜짐'
+                : '아직 설정이 필요해요 — 아래에서 권한을 켜주세요',
+            style: const TextStyle(fontSize: 14, height: 1.4),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _permTile({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required bool on,
+    required VoidCallback onEnable,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6EAF0)),
+      ),
+      child: Row(children: [
+        Icon(icon, color: on ? const Color(0xFF22a06b) : Colors.black38),
+        const SizedBox(width: 14),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 3),
+            Text(desc,
+                style: const TextStyle(fontSize: 13, color: Colors.black54)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        on
+            ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('켜짐',
+                    style: TextStyle(
+                        color: Color(0xFF22a06b),
+                        fontWeight: FontWeight.bold)))
+            : ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: _brand, foregroundColor: Colors.white),
+                onPressed: onEnable,
+                child: const Text('켜기'),
+              ),
+      ]),
+    );
+  }
+
+  Widget _blockedCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF3D2D2)),
+      ),
+      child:
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: const [
+          Icon(Icons.warning_amber_rounded, color: Color(0xFFD23F3F)),
+          SizedBox(width: 10),
+          Expanded(
+              child: Text('"입력 제어"를 켰는데도 원격 터치가 안 되나요?',
+                  style:
+                      TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+        ]),
+        const SizedBox(height: 10),
+        const Text(
+          '일부 태블릿·상업용 디스플레이(예: KTC 키오스크)는 보안상 접근성 기반 '
+          '터치를 막습니다. 이 경우 "고급 입력 모드(권한 주입)"로 전환해야 원격 터치가 됩니다.',
+          style: TextStyle(fontSize: 13, height: 1.5, color: Colors.black87),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.bolt),
+            label: const Text('고급 입력 모드 설정 (권한 주입)'),
+            style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFD23F3F),
+                side: const BorderSide(color: Color(0xFFD23F3F))),
+            onPressed: () => _showAdvancedGuide(context),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  void _showAdvancedGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('고급 입력 모드 (권한 주입)'),
+        content: const SingleChildScrollView(
+          child: Text(
+            '이 기기는 접근성 터치가 차단되어, 권한 있는 입력 주입(Shizuku)으로 '
+            '우회해야 원격 터치가 됩니다.\n\n'
+            '설정 방법:\n'
+            '1. Shizuku 앱 설치\n'
+            '2. 무선 디버깅으로 Shizuku 활성화 (1회)\n'
+            '3. 이 앱에 Shizuku 권한 허용\n\n'
+            '→ 그러면 접근성 차단 기기에서도 원격 터치가 동작합니다.\n'
+            '(앱 내장 자동화는 다음 업데이트 예정)',
+            style: TextStyle(fontSize: 14, height: 1.5),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(c).pop(),
+              child: const Text('확인')),
+        ],
       ),
     );
   }
