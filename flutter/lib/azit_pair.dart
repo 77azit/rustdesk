@@ -469,7 +469,7 @@ class AzitConnectedScreen extends StatelessWidget {
                   height: 56,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.touch_app),
-                    label: const Text('원격 터치 권한 설정',
+                    label: const Text('도움 받을 준비하기',
                         style: TextStyle(fontSize: 16)),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0071FF),
@@ -510,9 +510,8 @@ class AzitConnectedScreen extends StatelessWidget {
   }
 }
 
-// ===================== 원격 제어 권한 설정 =====================
-// 하단: 일반 기기 표준 권한(화면공유 + 입력제어=접근성) — RustDesk 로직 그대로 → 폰 등 정상기기 해결
-// 상단: 터치 차단 기기(태블릿/상업용 디스플레이)용 고급 입력 모드(권한 주입/Shizuku) 안내
+// ===================== 도움 받을 준비 (어르신 친화 단계별 안내) =====================
+// 전문용어 제거 · 큰 단계 · 권한 켜고 돌아오면 자동으로 '준비됨'으로 전환 · 무서운 '허용' 안심
 class AzitPermissionScreen extends StatefulWidget {
   const AzitPermissionScreen({Key? key}) : super(key: key);
   @override
@@ -521,14 +520,15 @@ class AzitPermissionScreen extends StatefulWidget {
 
 class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
   static const _brand = Color(0xFF0071FF);
+  static const _green = Color(0xFF1FA463);
   Timer? _poll;
 
   @override
   void initState() {
     super.initState();
-    // 접근성 설정 화면 다녀온 뒤 상태 갱신용 폴링
+    // 권한을 켜고 돌아오면 화면이 저절로 '준비됨'으로 바뀌도록 실시간 감지
     _poll = Timer.periodic(
-        const Duration(milliseconds: 800), (_) => mounted ? setState(() {}) : null);
+        const Duration(milliseconds: 600), (_) => mounted ? setState(() {}) : null);
   }
 
   @override
@@ -537,191 +537,328 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
     super.dispose();
   }
 
+  bool get _mediaOk {
+    try { return gFFI.serverModel.mediaOk; } catch (_) { return false; }
+  }
+  bool get _inputOk {
+    try { return gFFI.serverModel.inputOk; } catch (_) { return false; }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final sm = gFFI.serverModel;
-    bool mediaOk = false, inputOk = false;
-    try { mediaOk = sm.mediaOk; } catch (_) {}
-    try { inputOk = sm.inputOk; } catch (_) {}
-    final ready = mediaOk && inputOk;
+    final media = _mediaOk, input = _inputOk;
+    final allDone = media && input;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FB),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('원격 제어 권한 설정'),
+        title: const Text('도움 받을 준비',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
-        elevation: 0.5,
+        elevation: 0.4,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _banner(ready),
-          const SizedBox(height: 22),
-          const Text('기본 권한 (일반 기기)',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black54)),
-          const SizedBox(height: 10),
-          _permTile(
-            icon: Icons.screen_share,
-            title: '화면 공유',
-            desc: '원격으로 이 기기 화면을 보려면 필요',
-            on: mediaOk,
-            onEnable: () async {
-              try { await sm.toggleService(); } catch (_) {}
-              if (mounted) setState(() {});
-            },
-          ),
-          _permTile(
-            icon: Icons.touch_app,
-            title: '입력 제어 (원격 터치)',
-            desc: '원격으로 이 기기를 터치 제어하려면 켜세요',
-            on: inputOk,
-            onEnable: () async {
-              try { await sm.toggleInput(); } catch (_) {}
-              if (mounted) setState(() {});
-            },
-          ),
-          const SizedBox(height: 28),
-          _blockedCard(context),
-        ],
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 40),
+          children:
+              allDone ? _doneBody(context) : _setupBody(context, media, input),
+        ),
       ),
     );
   }
 
-  Widget _banner(bool ready) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: ready ? const Color(0xFFE7F7EF) : const Color(0xFFFFF4E5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(children: [
-        Icon(ready ? Icons.check_circle : Icons.info_outline,
-            color: ready ? const Color(0xFF22a06b) : const Color(0xFFE08600)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            ready
-                ? '원격 제어 준비 완료 — 화면 공유 + 입력 제어 모두 켜짐'
-                : '아직 설정이 필요해요 — 아래에서 권한을 켜주세요',
-            style: const TextStyle(fontSize: 14, height: 1.4),
+  // ── 준비 완료 화면 ──
+  List<Widget> _doneBody(BuildContext context) => [
+        const SizedBox(height: 24),
+        const Center(child: Icon(Icons.verified_rounded, color: _green, size: 92)),
+        const SizedBox(height: 22),
+        const Text('준비 다 됐어요! 🎉',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black87)),
+        const SizedBox(height: 14),
+        const Text('이제 멀리 있는 가족이\n언제든 이 기기를 도와드릴 수 있어요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 17, height: 1.6, color: Colors.black54)),
+        const SizedBox(height: 44),
+        Center(
+          child: SizedBox(
+            width: 200,
+            height: 56,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _brand,
+                  foregroundColor: Colors.white,
+                  shape:
+                      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
           ),
         ),
-      ]),
-    );
-  }
+      ];
 
-  Widget _permTile({
+  // ── 준비 중 화면 ──
+  List<Widget> _setupBody(BuildContext context, bool media, bool input) => [
+        const Text('가족이 멀리서도\n도와줄 수 있게 준비해요',
+            style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                height: 1.35,
+                color: Colors.black87)),
+        const SizedBox(height: 12),
+        const Text('아래 단추만 누르면 제가 알려드릴게요.\n천천히 따라오시면 1분이면 끝나요. 😊',
+            style: TextStyle(fontSize: 16, height: 1.55, color: Colors.black54)),
+        const SizedBox(height: 30),
+        _bigStep(
+          done: media,
+          icon: Icons.visibility_rounded,
+          title: '화면 보여주기',
+          desc: '가족이 이 화면을 볼 수 있어요',
+          action: '켜기',
+          onTap: () async {
+            try { await gFFI.serverModel.toggleService(); } catch (_) {}
+            if (mounted) setState(() {});
+          },
+        ),
+        const SizedBox(height: 18),
+        _bigStep(
+          done: input,
+          icon: Icons.touch_app_rounded,
+          title: '대신 눌러주기',
+          desc: '가족이 멀리서 화면을 대신 눌러줄 수 있어요',
+          action: '준비하기',
+          onTap: () => _showInputGuide(context),
+        ),
+        const SizedBox(height: 26),
+        // 켰는데도 안 눌러지는 기기(키오스크 등)용 — 어르신껜 작게, 관리자만
+        if (input)
+          Center(
+            child: TextButton(
+              onPressed: () => _showAdvancedGuide(context),
+              child: const Text('켰는데도 안 눌러지나요?',
+                  style: TextStyle(fontSize: 14, color: Colors.black45)),
+            ),
+          ),
+      ];
+
+  Widget _bigStep({
+    required bool done,
     required IconData icon,
     required String title,
     required String desc,
-    required bool on,
-    required VoidCallback onEnable,
+    required String action,
+    required VoidCallback onTap,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
+        color: done ? const Color(0xFFF1FBF5) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: done ? const Color(0xFFBBE6CD) : const Color(0xFFE2E7EE),
+            width: 1.6),
       ),
       child: Row(children: [
-        Icon(icon, color: on ? const Color(0xFF22a06b) : Colors.black38),
-        const SizedBox(width: 14),
+        Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+              color: done
+                  ? const Color(0xFFDDF3E6)
+                  : const Color(0xFFE7F0FF),
+              shape: BoxShape.circle),
+          child: Icon(done ? Icons.check_rounded : icon,
+              color: done ? _green : _brand, size: 30),
+        ),
+        const SizedBox(width: 16),
         Expanded(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title,
                 style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 3),
-            Text(desc,
-                style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87)),
+            const SizedBox(height: 4),
+            Text(done ? '준비됐어요' : desc,
+                style: TextStyle(
+                    fontSize: 14,
+                    height: 1.4,
+                    color: done ? _green : Colors.black54)),
           ]),
         ),
         const SizedBox(width: 10),
-        on
-            ? const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('켜짐',
-                    style: TextStyle(
-                        color: Color(0xFF22a06b),
-                        fontWeight: FontWeight.bold)))
-            : ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: _brand, foregroundColor: Colors.white),
-                onPressed: onEnable,
-                child: const Text('켜기'),
-              ),
+        if (!done)
+          SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _brand,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18)),
+              onPressed: onTap,
+              child: Text(action,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
       ]),
     );
   }
 
-  Widget _blockedCard(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF0F0),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF3D2D2)),
-      ),
-      child:
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: const [
-          Icon(Icons.warning_amber_rounded, color: Color(0xFFD23F3F)),
-          SizedBox(width: 10),
-          Expanded(
-              child: Text('"입력 제어"를 켰는데도 원격 터치가 안 되나요?',
-                  style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-        ]),
-        const SizedBox(height: 10),
-        const Text(
-          '일부 태블릿·상업용 디스플레이(예: KTC 키오스크)는 보안상 접근성 기반 '
-          '터치를 막습니다. 이 경우 "고급 입력 모드(권한 주입)"로 전환해야 원격 터치가 됩니다.',
-          style: TextStyle(fontSize: 13, height: 1.5, color: Colors.black87),
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.bolt),
-            label: const Text('고급 입력 모드 설정 (권한 주입)'),
-            style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFD23F3F),
-                side: const BorderSide(color: Color(0xFFD23F3F))),
-            onPressed: () => _showAdvancedGuide(context),
+  // 접근성 켜는 법 — 어르신용 큰 단계 + 무서운 '허용' 안심
+  void _showInputGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        insetPadding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('이렇게만 하면 돼요',
+                    style:
+                        TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                const Text('잠시 후 설정 화면이 열려요.\n화면 보면서 천천히 따라 하세요.',
+                    style: TextStyle(
+                        fontSize: 15.5, height: 1.5, color: Colors.black54)),
+                const SizedBox(height: 20),
+                _gStep('1', '목록에서 ', '키오스크 입력제어', ' 를 손가락으로 누르세요'),
+                _gStep('2', '맨 위 동그란 단추를 눌러 ', '켜세요', ' (파란색이 되면 켜진 거예요)'),
+                _gStep('3', '', "'허용'", ' 을 누르세요'),
+                _gNote('걱정 마세요 — 가족이 도와드리려고 켜는 거라 안전해요. 😊'),
+                _gStep('4', '왼쪽 위 ', '← 화살표', ' 를 눌러 돌아오세요'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFEFF5FF),
+                      borderRadius: BorderRadius.circular(13)),
+                  child: Row(children: const [
+                    Icon(Icons.auto_awesome_rounded, color: _brand, size: 22),
+                    SizedBox(width: 11),
+                    Expanded(
+                        child: Text('다 하시면 이 화면이 저절로 "준비됐어요"로 바뀌어요!',
+                            style: TextStyle(
+                                fontSize: 14.5,
+                                height: 1.45,
+                                fontWeight: FontWeight.w500))),
+                  ]),
+                ),
+                const SizedBox(height: 22),
+                Row(children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 54,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(c),
+                        child: const Text('취소',
+                            style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 54,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: _brand,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13))),
+                        onPressed: () {
+                          Navigator.pop(c);
+                          try {
+                            AndroidPermissionManager.startAction(
+                                kActionAccessibilitySettings);
+                          } catch (_) {}
+                        },
+                        child: const Text('설정 열기',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
           ),
         ),
-      ]),
+      ),
     );
   }
 
+  Widget _gStep(String n, String a, String b, String c) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration:
+                const BoxDecoration(color: _brand, shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Text(n,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text.rich(TextSpan(
+                  style: const TextStyle(
+                      fontSize: 16.5, height: 1.45, color: Colors.black87),
+                  children: [
+                    TextSpan(text: a),
+                    TextSpan(
+                        text: b,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, color: _brand)),
+                    TextSpan(text: c),
+                  ])),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _gNote(String t) => Padding(
+        padding: const EdgeInsets.only(left: 45, bottom: 16),
+        child:
+            Text(t, style: const TextStyle(fontSize: 13.5, height: 1.4, color: _green)),
+      );
+
+  // 켰는데도 안 눌러지는 기기(KTC 등) — 관리자/기사용
   void _showAdvancedGuide(BuildContext context) {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('고급 입력 모드 (권한 주입)'),
+        title: const Text('관리자 안내'),
         content: const SingleChildScrollView(
           child: Text(
-            '이 기기는 접근성 터치가 차단되어, 권한 있는 입력 주입(Shizuku)으로 '
-            '우회해야 원격 터치가 됩니다.\n\n'
-            '설정 방법:\n'
-            '1. Shizuku 앱 설치\n'
-            '2. 무선 디버깅으로 Shizuku 활성화 (1회)\n'
-            '3. 이 앱에 Shizuku 권한 허용\n\n'
-            '→ 그러면 접근성 차단 기기에서도 원격 터치가 동작합니다.\n'
-            '(앱 내장 자동화는 다음 업데이트 예정)',
-            style: TextStyle(fontSize: 14, height: 1.5),
+            '일부 키오스크 화면은 보안 때문에 일반 터치를 막아요.\n'
+            '이 기기는 설치 기사/관리자가 "고급 입력 모드"를 1회 설정하면 '
+            '원격 터치가 동작합니다.\n\n'
+            '(앱이 자동으로 설정하는 기능은 준비 중이에요.)',
+            style: TextStyle(fontSize: 14.5, height: 1.55),
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(c).pop(),
-              child: const Text('확인')),
+              onPressed: () => Navigator.pop(c), child: const Text('확인')),
         ],
       ),
     );
