@@ -519,16 +519,19 @@ class AzitPermissionScreen extends StatefulWidget {
 }
 
 class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
-  static const _brand = Color(0xFF0071FF);
-  static const _green = Color(0xFF1FA463);
+  // 토스 팔레트
+  static const _ink = Color(0xFF191F28);
+  static const _sub = Color(0xFF6B7684);
+  static const _blue = Color(0xFF3182F6);
+  static const _green = Color(0xFF15C47E);
   Timer? _poll;
 
   @override
   void initState() {
     super.initState();
-    // 권한을 켜고 돌아오면 화면이 저절로 '준비됨'으로 바뀌도록 실시간 감지
+    // 권한을 켜고 돌아오면 화면이 저절로 바뀌도록 실시간 감지
     _poll = Timer.periodic(
-        const Duration(milliseconds: 600), (_) => mounted ? setState(() {}) : null);
+        const Duration(milliseconds: 500), (_) => mounted ? setState(() {}) : null);
   }
 
   @override
@@ -547,301 +550,349 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
   @override
   Widget build(BuildContext context) {
     final media = _mediaOk, input = _inputOk;
-    final allDone = media && input;
+    final Widget body;
+    if (media && input) {
+      body = _successView(context);
+    } else if (!input) {
+      body = _heroView(context);
+    } else {
+      body = _mediaOnlyView(context);
+    }
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('도움 받을 준비',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.4,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        foregroundColor: _ink,
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(22, 26, 22, 40),
-          children:
-              allDone ? _doneBody(context) : _setupBody(context, media, input),
-        ),
-      ),
+      body: SafeArea(child: body),
     );
   }
 
-  // ── 준비 완료 화면 ──
-  List<Widget> _doneBody(BuildContext context) => [
-        const SizedBox(height: 24),
-        const Center(child: Icon(Icons.verified_rounded, color: _green, size: 92)),
-        const SizedBox(height: 22),
-        const Text('준비 다 됐어요! 🎉',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black87)),
-        const SizedBox(height: 14),
-        const Text('이제 멀리 있는 가족이\n언제든 이 기기를 도와드릴 수 있어요.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 17, height: 1.6, color: Colors.black54)),
-        const SizedBox(height: 44),
-        Center(
-          child: SizedBox(
-            width: 200,
-            height: 56,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: _brand,
-                  foregroundColor: Colors.white,
-                  shape:
-                      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('닫기',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+  // ───────── 메인: 히어로 + 신뢰(보안 이유) + 안심 + 하단 버튼 ─────────
+  Widget _heroView(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Center(child: _hero(Icons.touch_app_rounded)),
+                const SizedBox(height: 42),
+                const Text('멀리 있어도,\n바로 옆에서 도와드릴게요',
+                    style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        height: 1.32,
+                        color: _ink,
+                        letterSpacing: -0.5)),
+                const SizedBox(height: 14),
+                const Text('화면을 함께 보고, 막히는 순간엔\n대신 눌러서 끝까지 도와드려요.',
+                    style: TextStyle(fontSize: 16, height: 1.55, color: _sub)),
+                const SizedBox(height: 32),
+                _trustCard(),
+              ],
             ),
           ),
         ),
-      ];
+        _bottomBtn('터치 도움 켜기', () => _openGuide(context)),
+      ],
+    );
+  }
 
-  // ── 준비 중 화면 ──
-  List<Widget> _setupBody(BuildContext context, bool media, bool input) => [
-        const Text('가족이 멀리서도\n도와줄 수 있게 준비해요',
-            style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-                height: 1.35,
-                color: Colors.black87)),
-        const SizedBox(height: 12),
-        const Text('아래 단추만 누르면 제가 알려드릴게요.\n천천히 따라오시면 1분이면 끝나요. 😊',
-            style: TextStyle(fontSize: 16, height: 1.55, color: Colors.black54)),
-        const SizedBox(height: 30),
-        _bigStep(
-          done: media,
-          icon: Icons.visibility_rounded,
-          title: '화면 보여주기',
-          desc: '가족이 이 화면을 볼 수 있어요',
-          action: '켜기',
-          onTap: () async {
-            try { await gFFI.serverModel.toggleService(); } catch (_) {}
-            if (mounted) setState(() {});
-          },
-        ),
-        const SizedBox(height: 18),
-        _bigStep(
-          done: input,
-          icon: Icons.touch_app_rounded,
-          title: '대신 눌러주기',
-          desc: '가족이 멀리서 화면을 대신 눌러줄 수 있어요',
-          action: '준비하기',
-          onTap: () => _showInputGuide(context),
-        ),
-        const SizedBox(height: 26),
-        // 켰는데도 안 눌러지는 기기(키오스크 등)용 — 어르신껜 작게, 관리자만
-        if (input)
-          Center(
-            child: TextButton(
-              onPressed: () => _showAdvancedGuide(context),
-              child: const Text('켰는데도 안 눌러지나요?',
-                  style: TextStyle(fontSize: 14, color: Colors.black45)),
-            ),
-          ),
-      ];
+  Widget _hero(IconData icon) {
+    return Container(
+      width: 168,
+      height: 168,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF4D9BFF), Color(0xFF2272EB)]),
+        boxShadow: [
+          BoxShadow(
+              color: _blue.withOpacity(0.35),
+              blurRadius: 44,
+              spreadRadius: 2,
+              offset: const Offset(0, 16)),
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 80),
+    );
+  }
 
-  Widget _bigStep({
-    required bool done,
-    required IconData icon,
-    required String title,
-    required String desc,
-    required String action,
-    required VoidCallback onTap,
-  }) {
+  Widget _trustCard() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: done ? const Color(0xFFF1FBF5) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: done ? const Color(0xFFBBE6CD) : const Color(0xFFE2E7EE),
-            width: 1.6),
-      ),
-      child: Row(children: [
-        Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-              color: done
-                  ? const Color(0xFFDDF3E6)
-                  : const Color(0xFFE7F0FF),
-              shape: BoxShape.circle),
-          child: Icon(done ? Icons.check_rounded : icon,
-              color: done ? _green : _brand, size: 30),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 4),
-            Text(done ? '준비됐어요' : desc,
-                style: TextStyle(
-                    fontSize: 14,
-                    height: 1.4,
-                    color: done ? _green : Colors.black54)),
-          ]),
-        ),
-        const SizedBox(width: 10),
-        if (!done)
-          SizedBox(
-            height: 50,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: _brand,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13)),
-                  padding: const EdgeInsets.symmetric(horizontal: 18)),
-              onPressed: onTap,
-              child: Text(action,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-          ),
+          color: const Color(0xFFF7F9FC),
+          borderRadius: BorderRadius.circular(18)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: const [
+          Icon(Icons.lock_rounded, color: _blue, size: 20),
+          SizedBox(width: 9),
+          Text('안드로이드가 당신을 지켜요',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold, color: _ink)),
+        ]),
+        const SizedBox(height: 10),
+        const Text('원격 조작 권한은 오직 본인만 켤 수 있어요.\n그래서 누구도 몰래 손댈 수 없습니다.',
+            style: TextStyle(
+                fontSize: 14.5, height: 1.55, color: Color(0xFF4E5968))),
+        const SizedBox(height: 16),
+        _trustRow('도와드릴 때만 잠깐 동작해요'),
+        _trustRow('언제든 직접 끌 수 있어요'),
+        _trustRow('연결은 끝까지 암호화돼요'),
       ]),
     );
   }
 
-  // 접근성 켜는 법 — 어르신용 큰 단계 + 무서운 '허용' 안심
-  void _showInputGuide(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (c) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text('이렇게만 하면 돼요',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('잠시 후 설정 화면이 열려요.\n화면 보면서 천천히 따라 하세요.',
-                  style: TextStyle(
-                      fontSize: 15.5, height: 1.5, color: Colors.black54)),
-              const SizedBox(height: 20),
-              _gStep('1', '목록에서 ', '키오스크 입력제어', ' 를 손가락으로 누르세요'),
-              _gStep('2', '맨 위 동그란 단추를 눌러 ', '켜세요', ' (파란색이 되면 켜진 거예요)'),
-              _gStep('3', '', "'허용'", ' 을 누르세요'),
-              _gNote('걱정 마세요 — 가족이 도와드리려고 켜는 거라 안전해요. 😊'),
-              _gStep('4', '왼쪽 위 ', '← 화살표', ' 를 눌러 돌아오세요'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFEFF5FF),
-                    borderRadius: BorderRadius.circular(13)),
-                child: Row(children: const [
-                  Icon(Icons.auto_awesome_rounded, color: _brand, size: 22),
-                  SizedBox(width: 11),
-                  Expanded(
-                      child: Text('다 하시면 이 화면이 저절로 "준비됐어요"로 바뀌어요!',
-                          style: TextStyle(
-                              fontSize: 14.5,
-                              height: 1.45,
-                              fontWeight: FontWeight.w500))),
+  Widget _trustRow(String t) => Padding(
+        padding: const EdgeInsets.only(top: 9),
+        child: Row(children: [
+          const Icon(Icons.check_circle_rounded, color: _green, size: 19),
+          const SizedBox(width: 9),
+          Expanded(
+              child: Text(t, style: const TextStyle(fontSize: 14.5, color: _ink))),
+        ]),
+      );
+
+  // ───────── 화면공유만 꺼진 경우(드묾) ─────────
+  Widget _mediaOnlyView(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 40, 28, 24),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: _hero(Icons.remove_red_eye_rounded)),
+                  const SizedBox(height: 42),
+                  const Text('화면 보기를 켜주세요',
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: _ink,
+                          letterSpacing: -0.5)),
+                  const SizedBox(height: 14),
+                  const Text('멀리서 이 화면을 함께 볼 수 있어요.',
+                      style:
+                          TextStyle(fontSize: 16, height: 1.55, color: _sub)),
                 ]),
-              ),
-            ],
           ),
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('취소', style: TextStyle(fontSize: 16)),
+        _bottomBtn('화면 보기 켜기', () async {
+          try { await gFFI.serverModel.toggleService(); } catch (_) {}
+          if (mounted) setState(() {});
+        }),
+      ],
+    );
+  }
+
+  // ───────── 성공 ─────────
+  Widget _successView(BuildContext context) {
+    return Column(children: [
+      const Spacer(flex: 3),
+      Center(
+        child: Container(
+          width: 104,
+          height: 104,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _green,
+            boxShadow: [
+              BoxShadow(
+                  color: _green.withOpacity(0.32),
+                  blurRadius: 34,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 14)),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: _brand,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(13))),
-            onPressed: () {
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 62),
+        ),
+      ),
+      const SizedBox(height: 30),
+      const Text('이제 다 됐어요',
+          style: TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+              letterSpacing: -0.5)),
+      const SizedBox(height: 13),
+      const Text('막히는 순간, 누군가 바로 옆에서\n손 내밀어 줄 거예요.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, height: 1.55, color: _sub)),
+      const Spacer(flex: 4),
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: _btn('확인', () => Navigator.pop(context))),
+      const SizedBox(height: 2),
+      TextButton(
+          onPressed: () => _showAdvancedGuide(context),
+          child: const Text('원격 터치가 안 되나요?',
+              style: TextStyle(fontSize: 13.5, color: _sub))),
+      const SizedBox(height: 12),
+    ]);
+  }
+
+  // ───────── 바텀시트: 어떻게 켜나(토스식) ─────────
+  void _openGuide(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (c) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            26, 14, 26, 18 + MediaQuery.of(c).viewPadding.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+                child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFE5E8EB),
+                        borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 26),
+            const Text('30초면 끝나요',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                    letterSpacing: -0.5)),
+            const SizedBox(height: 8),
+            const Text('잠시 후 열리는 설정에서 그대로 따라 하세요.',
+                style: TextStyle(fontSize: 14.5, color: _sub)),
+            const SizedBox(height: 24),
+            _gs('1', '키오스크 입력제어', ' 누르기'),
+            _gs('2', '스위치 켜기', ''),
+            _gs('3', "'허용'", ' 누르기'),
+            _gs('4', '뒤로', ' 돌아오면 끝!'),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFF2F8FF),
+                  borderRadius: BorderRadius.circular(14)),
+              child: Row(children: const [
+                Icon(Icons.auto_awesome_rounded, color: _blue, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                    child: Text('다 되면 이 화면이 저절로 바뀌어요. 기다릴 필요 없어요.',
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            height: 1.45,
+                            color: Color(0xFF3A5FA8),
+                            fontWeight: FontWeight.w500))),
+              ]),
+            ),
+            const SizedBox(height: 20),
+            _btn('설정 열기', () {
               Navigator.pop(c);
               try {
                 AndroidPermissionManager.startAction(
                     kActionAccessibilitySettings);
               } catch (_) {}
-            },
-            child: const Text('설정 열기',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-          ),
-        ],
+            }),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _gStep(String n, String a, String b, String c) => Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget _gs(String n, String b, String tail) => Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Row(children: [
           Container(
-            width: 32,
-            height: 32,
-            decoration:
-                const BoxDecoration(color: _brand, shape: BoxShape.circle),
-            alignment: Alignment.center,
-            child: Text(n,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16)),
-          ),
-          const SizedBox(width: 13),
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                  color: _blue, borderRadius: BorderRadius.circular(9)),
+              alignment: Alignment.center,
+              child: Text(n,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15))),
+          const SizedBox(width: 15),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 3),
               child: Text.rich(TextSpan(
                   style: const TextStyle(
-                      fontSize: 16.5, height: 1.45, color: Colors.black87),
+                      fontSize: 17.5, color: _ink, height: 1.25),
                   children: [
-                    TextSpan(text: a),
-                    TextSpan(
-                        text: b,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, color: _brand)),
-                    TextSpan(text: c),
-                  ])),
-            ),
-          ),
+                TextSpan(text: b, style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(text: tail, style: const TextStyle(color: _sub)),
+              ]))),
         ]),
       );
 
-  Widget _gNote(String t) => Padding(
-        padding: const EdgeInsets.only(left: 45, bottom: 16),
-        child:
-            Text(t, style: const TextStyle(fontSize: 13.5, height: 1.4, color: _green)),
+  Widget _bottomBtn(String label, VoidCallback onTap) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 6, 24, 16),
+        child: _btn(label, onTap),
+      );
+
+  Widget _btn(String label, VoidCallback onTap) => SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: _blue,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+          onPressed: onTap,
+          child: Text(label,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        ),
       );
 
   // 켰는데도 안 눌러지는 기기(KTC 등) — 관리자/기사용
   void _showAdvancedGuide(BuildContext context) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('관리자 안내'),
-        content: const SingleChildScrollView(
-          child: Text(
-            '일부 키오스크 화면은 보안 때문에 일반 터치를 막아요.\n'
-            '이 기기는 설치 기사/관리자가 "고급 입력 모드"를 1회 설정하면 '
-            '원격 터치가 동작합니다.\n\n'
-            '(앱이 자동으로 설정하는 기능은 준비 중이에요.)',
-            style: TextStyle(fontSize: 14.5, height: 1.55),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c), child: const Text('확인')),
-        ],
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (c) => Padding(
+        padding: const EdgeInsets.fromLTRB(26, 14, 26, 28),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                  child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFE5E8EB),
+                          borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 24),
+              const Text('일부 키오스크 화면 안내',
+                  style: TextStyle(
+                      fontSize: 19, fontWeight: FontWeight.bold, color: _ink)),
+              const SizedBox(height: 12),
+              const Text(
+                  '보안이 강한 일부 키오스크는 일반 터치를 막아요.\n'
+                  '이 기기는 설치 담당자가 고급 모드를 한 번만 설정하면 '
+                  '원격 터치가 동작합니다.',
+                  style: TextStyle(
+                      fontSize: 14.5, height: 1.6, color: Color(0xFF4E5968))),
+              const SizedBox(height: 22),
+              _btn('알겠어요', () => Navigator.pop(c)),
+            ]),
       ),
     );
   }
