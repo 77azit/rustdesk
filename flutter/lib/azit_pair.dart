@@ -120,8 +120,8 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
         content: const Text(
           '상대가 이 화면을 대신 눌러서 도와드리려면\n'
           '권한 하나만 켜면 돼요.\n\n'
-          '번거로우시죠. 헤매지 않게 바로 그 화면으로 모실게요.\n'
-          '스위치만 켜고 "허용"을 누르시면 끝이에요.',
+          '잠시 후 목록이 열리면, 맨 위 "키오스크 입력제어"를\n'
+          '켜고 "허용"을 누르시면 끝이에요.',
           style: TextStyle(fontSize: 15, height: 1.45),
         ),
         actions: [
@@ -592,7 +592,7 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
                         color: _ink,
                         letterSpacing: -0.5)),
                 const SizedBox(height: 14),
-                const Text('이 권한 하나가 번거로우시죠.\n그래서 헤매지 않게, 바로 그 화면으로 모실게요.\n스위치만 켜시면 끝이에요.',
+                const Text('이 권한 하나가 번거로우시죠.\n어디서 어떻게 켜는지, 제가 한 단계씩 정확히 알려드릴게요.',
                     style: TextStyle(fontSize: 16, height: 1.6, color: _sub)),
                 const SizedBox(height: 32),
                 _trustCard(),
@@ -766,19 +766,20 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
                         color: const Color(0xFFE5E8EB),
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 26),
-            const Text('스위치만 켜면 끝이에요',
+            const Text('이렇게만 하면 돼요',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: _ink,
                     letterSpacing: -0.5)),
             const SizedBox(height: 8),
-            const Text('찾으실 필요 없어요. 바로 그 화면으로 열어드릴게요.',
+            const Text('잠시 후 목록이 열려요. 맨 위 우리 앱 아이콘을 찾으세요.',
                 style: TextStyle(fontSize: 14.5, color: _sub)),
             const SizedBox(height: 24),
-            _gs('1', '키오스크 입력제어', ' 스위치 켜기'),
-            _gs('2', "'허용'", ' 누르기'),
-            _gs('3', '뒤로', ' 돌아오면 끝!'),
+            _gs('1', '키오스크 입력제어', ' 누르기 (맨 위에 있어요)'),
+            _gs('2', '스위치 켜기', ''),
+            _gs('3', "'허용'", ' 누르기'),
+            _gs('4', '뒤로', ' 돌아오면 끝!'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(15),
@@ -798,7 +799,7 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
               ]),
             ),
             const SizedBox(height: 20),
-            _btn('바로 그 화면 열기', () {
+            _btn('설정 열기', () {
               Navigator.pop(c);
               try {
                 AndroidPermissionManager.startAction(

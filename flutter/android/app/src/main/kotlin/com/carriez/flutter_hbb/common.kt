@@ -87,30 +87,23 @@ fun requestPermission(context: Context, type: String) {
 
 fun startAction(context: Context, action: String) {
     try {
-        // 우리 접근성 서비스(키오스크 입력제어) 토글 페이지로 "직접" 이동.
-        // 일반 접근성 목록을 열어 사용자가 서비스를 찾아 헤매지 않게 — 마찰 최소화.
+        // 접근성 목록을 열되, 우리 서비스(키오스크 입력제어)로 스크롤/강조 시도.
+        // (토글 페이지 직행은 OPEN_ACCESSIBILITY_DETAILS_SETTINGS = signature 권한이라 일반앱 불가.
+        //  대신 fragment_args로 해당 항목을 강조 — 지원하는 기기에선 바로 눈에 띈다.)
         if (action == "android.settings.ACCESSIBILITY_DETAILS_SETTINGS") {
             val cn = ComponentName(
                 context.packageName,
                 "com.carriez.flutter_hbb.InputService"
             ).flattenToString()
-            try {
-                val argsBundle = Bundle().apply {
-                    putString(":settings:fragment_args_key", cn)
-                }
-                context.startActivity(Intent(action).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra(":settings:fragment_args_key", cn)
-                    putExtra(":settings:show_fragment_args", argsBundle)
-                })
-                return
-            } catch (e: Exception) {
-                // 폴백: 일반 접근성 목록(구형/제조사 변형 대비)
-                context.startActivity(Intent(ACTION_ACCESSIBILITY_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
-                return
+            val argsBundle = Bundle().apply {
+                putString(":settings:fragment_args_key", cn)
             }
+            context.startActivity(Intent(ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(":settings:fragment_args_key", cn)
+                putExtra(":settings:show_fragment_args", argsBundle)
+            })
+            return
         }
         context.startActivity(Intent(action).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
