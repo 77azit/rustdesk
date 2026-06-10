@@ -22,6 +22,53 @@ const String kAuthBase = 'https://db.77azit.com';
 const Color kBrand = Color(0xFF0071FF);
 const Color kBrandDark = Color(0xFF0059CC);
 
+// 토스 결 공용 팔레트 (전 화면 일관성)
+const Color azInk = Color(0xFF191F28);
+const Color azSub = Color(0xFF6B7684);
+const Color azBlue = Color(0xFF3182F6);
+const Color azGreen = Color(0xFF15C47E);
+const Color azLine = Color(0xFFF2F4F6);
+
+// 토스 결 히어로 원(그라데이션+글로우)
+Widget azHero(IconData icon, {bool green = false}) => Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: green
+                ? const [Color(0xFF34D08C), Color(0xFF15B477)]
+                : const [Color(0xFF4D9BFF), Color(0xFF2272EB)]),
+        boxShadow: [
+          BoxShadow(
+              color: (green ? azGreen : azBlue).withOpacity(0.32),
+              blurRadius: 42,
+              spreadRadius: 2,
+              offset: const Offset(0, 15)),
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 74),
+    );
+
+// 토스 결 풀폭 기본 버튼
+Widget azPrimaryBtn(String label, VoidCallback onTap, {Color? color}) => SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+            backgroundColor: color ?? azBlue,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+        onPressed: onTap,
+        child: Text(label,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      ),
+    );
+
 String _sha256hex(String s) =>
     crypto.sha256.convert(utf8.encode(s)).toString();
 
@@ -409,8 +456,27 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
 }
 
 // ========================= 연결된 기기: 상태 화면 + 연결 해제 =========================
-class AzitConnectedScreen extends StatelessWidget {
+class AzitConnectedScreen extends StatefulWidget {
   const AzitConnectedScreen({Key? key}) : super(key: key);
+  @override
+  State<AzitConnectedScreen> createState() => _AzitConnectedScreenState();
+}
+
+class _AzitConnectedScreenState extends State<AzitConnectedScreen> {
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(
+        const Duration(milliseconds: 700), (_) => mounted ? setState(() {}) : null);
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
 
   Future<void> _unpair(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -442,72 +508,88 @@ class AzitConnectedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool inputOk = false;
+    try { inputOk = gFFI.serverModel.inputOk; } catch (_) {}
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.verified_user,
-                    color: Color(0xFF22a06b), size: 96),
-                const SizedBox(height: 20),
-                const Text('이 기기는 연결되어 있어요',
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87)),
-                const SizedBox(height: 10),
-                const Text('필요할 때 원격으로 도와드릴 수 있어요.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 15, color: Colors.black54)),
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: 260,
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.touch_app),
-                    label: const Text('도움 받을 준비하기',
-                        style: TextStyle(fontSize: 16)),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0071FF),
-                        foregroundColor: Colors.white),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const AzitPermissionScreen()),
-                    ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      azHero(Icons.verified_user_rounded, green: true),
+                      const SizedBox(height: 34),
+                      const Text('연결되어 있어요',
+                          style: TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                              color: azInk,
+                              letterSpacing: -0.5)),
+                      const SizedBox(height: 12),
+                      const Text('막히면 언제든 곁에서 도와드릴게요.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 16, height: 1.5, color: azSub)),
+                      const SizedBox(height: 28),
+                      _statusChip(inputOk),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: 260,
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.link_off, color: Colors.red),
-                    label: const Text('연결 해제',
-                        style: TextStyle(fontSize: 16, color: Colors.red)),
-                    style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red)),
-                    onPressed: () => _unpair(context),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                TextButton.icon(
-                  icon: const Icon(Icons.cast_connected),
-                  label: const Text('다른 기기 제어하기'),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AzitControllerScreen()),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+              child: azPrimaryBtn(
+                inputOk ? '도움 설정 확인' : '터치 도움 켜기',
+                () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const AzitPermissionScreen())),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const AzitControllerScreen())),
+              child: const Text('다른 기기 제어하기',
+                  style: TextStyle(
+                      fontSize: 15,
+                      color: azBlue,
+                      fontWeight: FontWeight.w600)),
+            ),
+            TextButton(
+              onPressed: () => _unpair(context),
+              child: const Text('연결 해제',
+                  style: TextStyle(fontSize: 13.5, color: azSub)),
+            ),
+            const SizedBox(height: 10),
+          ],
         ),
       ),
     );
   }
+
+  Widget _statusChip(bool ok) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        decoration: BoxDecoration(
+          color: ok ? const Color(0xFFEAF8F1) : const Color(0xFFFFF4E5),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              size: 19, color: ok ? azGreen : const Color(0xFFE08600)),
+          const SizedBox(width: 8),
+          Text(ok ? '터치 도움 준비됨' : '터치 도움을 켜주세요',
+              style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  color: ok
+                      ? const Color(0xFF11875D)
+                      : const Color(0xFFB26A00))),
+        ]),
+      );
 }
 
 // ===================== 도움 받을 준비 (어르신 친화 단계별 안내) =====================
