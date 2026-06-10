@@ -715,87 +715,69 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (c) => Dialog(
+      builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        insetPadding: const EdgeInsets.all(20),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('이렇게만 하면 돼요',
-                    style:
-                        TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
-                const Text('잠시 후 설정 화면이 열려요.\n화면 보면서 천천히 따라 하세요.',
-                    style: TextStyle(
-                        fontSize: 15.5, height: 1.5, color: Colors.black54)),
-                const SizedBox(height: 20),
-                _gStep('1', '목록에서 ', '키오스크 입력제어', ' 를 손가락으로 누르세요'),
-                _gStep('2', '맨 위 동그란 단추를 눌러 ', '켜세요', ' (파란색이 되면 켜진 거예요)'),
-                _gStep('3', '', "'허용'", ' 을 누르세요'),
-                _gNote('걱정 마세요 — 가족이 도와드리려고 켜는 거라 안전해요. 😊'),
-                _gStep('4', '왼쪽 위 ', '← 화살표', ' 를 눌러 돌아오세요'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                      color: const Color(0xFFEFF5FF),
-                      borderRadius: BorderRadius.circular(13)),
-                  child: Row(children: const [
-                    Icon(Icons.auto_awesome_rounded, color: _brand, size: 22),
-                    SizedBox(width: 11),
-                    Expanded(
-                        child: Text('다 하시면 이 화면이 저절로 "준비됐어요"로 바뀌어요!',
-                            style: TextStyle(
-                                fontSize: 14.5,
-                                height: 1.45,
-                                fontWeight: FontWeight.w500))),
-                  ]),
-                ),
-                const SizedBox(height: 22),
-                Row(children: [
+        title: const Text('이렇게만 하면 돼요',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('잠시 후 설정 화면이 열려요.\n화면 보면서 천천히 따라 하세요.',
+                  style: TextStyle(
+                      fontSize: 15.5, height: 1.5, color: Colors.black54)),
+              const SizedBox(height: 20),
+              _gStep('1', '목록에서 ', '키오스크 입력제어', ' 를 손가락으로 누르세요'),
+              _gStep('2', '맨 위 동그란 단추를 눌러 ', '켜세요', ' (파란색이 되면 켜진 거예요)'),
+              _gStep('3', '', "'허용'", ' 을 누르세요'),
+              _gNote('걱정 마세요 — 가족이 도와드리려고 켜는 거라 안전해요. 😊'),
+              _gStep('4', '왼쪽 위 ', '← 화살표', ' 를 눌러 돌아오세요'),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFEFF5FF),
+                    borderRadius: BorderRadius.circular(13)),
+                child: Row(children: const [
+                  Icon(Icons.auto_awesome_rounded, color: _brand, size: 22),
+                  SizedBox(width: 11),
                   Expanded(
-                    child: SizedBox(
-                      height: 54,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(c),
-                        child: const Text('취소',
-                            style: TextStyle(fontSize: 16)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: SizedBox(
-                      height: 54,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: _brand,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(13))),
-                        onPressed: () {
-                          Navigator.pop(c);
-                          try {
-                            AndroidPermissionManager.startAction(
-                                kActionAccessibilitySettings);
-                          } catch (_) {}
-                        },
-                        child: const Text('설정 열기',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
+                      child: Text('다 하시면 이 화면이 저절로 "준비됐어요"로 바뀌어요!',
+                          style: TextStyle(
+                              fontSize: 14.5,
+                              height: 1.45,
+                              fontWeight: FontWeight.w500))),
                 ]),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('취소', style: TextStyle(fontSize: 16)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: _brand,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(13))),
+            onPressed: () {
+              Navigator.pop(c);
+              try {
+                AndroidPermissionManager.startAction(
+                    kActionAccessibilitySettings);
+              } catch (_) {}
+            },
+            child: const Text('설정 열기',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
