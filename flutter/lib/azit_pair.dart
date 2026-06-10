@@ -116,13 +116,13 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('터치 제어 권한 켜기'),
+        title: const Text('터치 도움 켜기'),
         content: const Text(
-          '상대가 이 화면을 직접 만져서 도와드리려면\n'
+          '상대가 이 화면을 대신 눌러서 도와드리려면\n'
           '권한 하나만 켜면 돼요.\n\n'
-          '아래 [권한 켜기]를 누르면 설정이 열려요.\n'
-          '거기서 "키오스크관리"를 찾아 켜주세요.',
-          style: TextStyle(fontSize: 15, height: 1.4),
+          '번거로우시죠. 헤매지 않게 바로 그 화면으로 모실게요.\n'
+          '스위치만 켜고 "허용"을 누르시면 끝이에요.',
+          style: TextStyle(fontSize: 15, height: 1.45),
         ),
         actions: [
           TextButton(
@@ -134,10 +134,10 @@ class _AzitPairScreenState extends State<AzitPairScreen> {
               Navigator.of(c).pop();
               try {
                 AndroidPermissionManager.startAction(
-                    kActionAccessibilitySettings);
+                    'android.settings.ACCESSIBILITY_DETAILS_SETTINGS');
               } catch (_) {}
             },
-            child: const Text('권한 켜기'),
+            child: const Text('켜는 화면 열기'),
           ),
         ],
       ),
@@ -584,7 +584,7 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
                 const SizedBox(height: 8),
                 Center(child: _hero(Icons.touch_app_rounded)),
                 const SizedBox(height: 42),
-                const Text('멀리 있어도,\n바로 옆에서 도와드릴게요',
+                const Text('거의 다 왔어요',
                     style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
@@ -592,8 +592,8 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
                         color: _ink,
                         letterSpacing: -0.5)),
                 const SizedBox(height: 14),
-                const Text('화면을 함께 보고, 막히는 순간엔\n대신 눌러서 끝까지 도와드려요.',
-                    style: TextStyle(fontSize: 16, height: 1.55, color: _sub)),
+                const Text('이 권한 하나가 번거로우시죠.\n그래서 헤매지 않게, 바로 그 화면으로 모실게요.\n스위치만 켜시면 끝이에요.',
+                    style: TextStyle(fontSize: 16, height: 1.6, color: _sub)),
                 const SizedBox(height: 32),
                 _trustCard(),
               ],
@@ -766,20 +766,19 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
                         color: const Color(0xFFE5E8EB),
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 26),
-            const Text('30초면 끝나요',
+            const Text('스위치만 켜면 끝이에요',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: _ink,
                     letterSpacing: -0.5)),
             const SizedBox(height: 8),
-            const Text('잠시 후 열리는 설정에서 그대로 따라 하세요.',
+            const Text('찾으실 필요 없어요. 바로 그 화면으로 열어드릴게요.',
                 style: TextStyle(fontSize: 14.5, color: _sub)),
             const SizedBox(height: 24),
-            _gs('1', '키오스크 입력제어', ' 누르기'),
-            _gs('2', '스위치 켜기', ''),
-            _gs('3', "'허용'", ' 누르기'),
-            _gs('4', '뒤로', ' 돌아오면 끝!'),
+            _gs('1', '키오스크 입력제어', ' 스위치 켜기'),
+            _gs('2', "'허용'", ' 누르기'),
+            _gs('3', '뒤로', ' 돌아오면 끝!'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(15),
@@ -799,11 +798,11 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
               ]),
             ),
             const SizedBox(height: 20),
-            _btn('설정 열기', () {
+            _btn('바로 그 화면 열기', () {
               Navigator.pop(c);
               try {
                 AndroidPermissionManager.startAction(
-                    kActionAccessibilitySettings);
+                    'android.settings.ACCESSIBILITY_DETAILS_SETTINGS');
               } catch (_) {}
             }),
           ],
