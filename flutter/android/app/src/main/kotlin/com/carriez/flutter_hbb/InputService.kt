@@ -88,6 +88,8 @@ class InputService : AccessibilityService() {
 
     private var lastX = 0
     private var lastY = 0
+    private var downX = 0 // 제스처 시작점(Shizuku 탭/스와이프 판단용)
+    private var downY = 0
 
     private val volumeController: VolumeController by lazy { VolumeController(applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager) }
 
@@ -287,6 +289,8 @@ class InputService : AccessibilityService() {
         lastTouchGestureStartTime = System.currentTimeMillis()
         lastX = x
         lastY = y
+        downX = x
+        downY = y
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
@@ -295,6 +299,21 @@ class InputService : AccessibilityService() {
         var duration = System.currentTimeMillis() - lastTouchGestureStartTime
         if (duration <= 0) {
             duration = 1
+        }
+        // 접근성 제스처가 막힌 기기(KTC 등): Shizuku 권한 주입으로 우회.
+        // 사용 가능할 때만 — 아니면 아래 기존 접근성 dispatchGesture로 폴백.
+        if (ShizukuInjector.isReady()) {
+            val dx = x - downX
+            val dy = y - downY
+            if (dx * dx + dy * dy > 900) { // 30px 이상 이동 → 스와이프
+                ShizukuInjector.swipe(downX, downY, x, y, duration.coerceIn(20, 1200))
+            } else {
+                ShizukuInjector.tap(x, y)
+            }
+            Log.d(logTag, "AZTOUCH shizuku inject x:$x y:$y")
+            touchPath.reset()
+            stroke = null
+            return
         }
         try {
             if (stroke == null) {

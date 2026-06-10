@@ -258,6 +258,19 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "shizuku_available" -> {
+                    // 기기에 Shizuku 설치+실행 중인가
+                    result.success(ShizukuInjector.isAvailable())
+                }
+                "shizuku_granted" -> {
+                    // 이 앱에 Shizuku 권한이 허용되어 권한 주입을 쓸 수 있는가
+                    result.success(ShizukuInjector.isReady())
+                }
+                "shizuku_request" -> {
+                    // Shizuku 권한 요청(다이얼로그). 결과는 shizuku_granted 폴링으로 확인.
+                    ShizukuInjector.requestPermission(0xA21)
+                    result.success(true)
+                }
                 "check_video_permission" -> {
                     mainService?.let {
                         result.success(it.checkMediaPermission())
