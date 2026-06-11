@@ -5,7 +5,7 @@
 
     <!-- Shizuku provider는 minSdk 23 요구. 우리 minSdk(22)는 유지하고,
          Shizuku는 Android 11+에서만 실제 사용하므로 override로 병합 강제(저버전엔 미동작=안전). -->
-    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider" />
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider,rikka.shizuku.api" />
 
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
