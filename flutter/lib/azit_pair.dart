@@ -818,7 +818,8 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
           child: _btn('확인', () => Navigator.pop(context))),
       const SizedBox(height: 2),
       TextButton(
-          onPressed: () => _showAdvancedGuide(context),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const AzitAdvancedInputScreen())),
           child: const Text('원격 터치가 안 되나요?',
               style: TextStyle(fontSize: 13.5, color: _sub))),
       const SizedBox(height: 12),
@@ -976,6 +977,143 @@ class _AzitPermissionScreenState extends State<AzitPermissionScreen> {
               _btn('알겠어요', () => Navigator.pop(c)),
             ]),
       ),
+    );
+  }
+}
+
+// ============ 고급 입력 모드 (Shizuku) — 접근성 터치가 막힌 기기(KTC 등)용 ============
+class AzitAdvancedInputScreen extends StatefulWidget {
+  const AzitAdvancedInputScreen({Key? key}) : super(key: key);
+  @override
+  State<AzitAdvancedInputScreen> createState() =>
+      _AzitAdvancedInputScreenState();
+}
+
+class _AzitAdvancedInputScreenState extends State<AzitAdvancedInputScreen> {
+  Timer? _poll;
+  bool _available = false;
+  bool _granted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _poll = Timer.periodic(
+        const Duration(milliseconds: 1200), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    bool a = false, g = false;
+    try { a = (await gFFI.invokeMethod('shizuku_available')) == true; } catch (_) {}
+    try { g = (await gFFI.invokeMethod('shizuku_granted')) == true; } catch (_) {}
+    if (mounted) setState(() { _available = a; _granted = g; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        foregroundColor: azInk,
+        title: const Text('고급 입력 모드',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19)),
+      ),
+      body: SafeArea(child: _body(context)),
+    );
+  }
+
+  Widget _body(BuildContext context) {
+    if (_granted) {
+      return _layout(
+        hero: azHero(Icons.bolt_rounded, green: true),
+        title: '고급 입력 모드 켜짐',
+        desc: '이 기기는 보안 때문에 일반 터치가 막혀 있어요.\n'
+            '이제 권한 있는 방식으로 원격 터치가 동작합니다.',
+        btnLabel: '확인',
+        onBtn: () => Navigator.pop(context),
+      );
+    }
+    if (_available) {
+      return _layout(
+        hero: azHero(Icons.bolt_rounded),
+        title: '권한 한 번만 허용해주세요',
+        desc: 'Shizuku가 켜져 있어요.\n'
+            '아래 버튼을 누르고 "허용"하면 바로 끝나요.',
+        btnLabel: '권한 허용하기',
+        onBtn: () {
+          try { gFFI.invokeMethod('shizuku_request'); } catch (_) {}
+        },
+      );
+    }
+    return _layout(
+      hero: azHero(Icons.engineering_rounded),
+      title: '설치 담당자 설정이 필요해요',
+      desc: '이 키오스크는 보안이 강해 일반 터치가 막혀 있어요.\n'
+          '설치 담당자가 Shizuku를 한 번 켜주면\n원격 터치가 동작합니다.',
+      btnLabel: '확인',
+      onBtn: () => Navigator.pop(context),
+      footnote: 'Shizuku 앱 설치 + 무선 디버깅으로 1회 활성화 (관리자용)',
+    );
+  }
+
+  Widget _layout({
+    required Widget hero,
+    required String title,
+    required String desc,
+    required String btnLabel,
+    required VoidCallback onBtn,
+    String? footnote,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  hero,
+                  const SizedBox(height: 34),
+                  Text(title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: azInk,
+                          letterSpacing: -0.5)),
+                  const SizedBox(height: 14),
+                  Text(desc,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 16, height: 1.55, color: azSub)),
+                  if (footnote != null) ...[
+                    const SizedBox(height: 18),
+                    Text(footnote,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 13, color: Color(0xFFAAB1BC))),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+          child: azPrimaryBtn(btnLabel, onBtn),
+        ),
+      ],
     );
   }
 }
