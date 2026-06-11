@@ -111,6 +111,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 키오스크 무음 모드: 부팅 자동실행이면 포그라운드로 올라올 때마다 즉시 뒤로 보낸다.
+        // 미디어프로젝션 요청 등으로 몇 번을 앞으로 나와도 매번 백그라운드 → UI가 절대 머무르지 않음.
+        if (azitSilentBoot) {
+            window.decorView.postDelayed({
+                if (azitSilentBoot) {
+                    try { moveTaskToBack(true) } catch (_: Exception) {}
+                }
+            }, 150)
+        }
         val inputPer = InputService.isOpen
         activity.runOnUiThread {
             flutterMethodChannel?.invokeMethod(
@@ -142,21 +151,10 @@ class MainActivity : FlutterActivity() {
         }
         azitSetupKiosk()
         // 키오스크: 부팅 자동실행이면 UI를 띄우지 않고 백그라운드로.
-        // 단, 부팅 직후 미디어프로젝션 요청(PermissionRequestTransparentActivity) 등이
-        // 앱을 다시 앞으로 끌어올려서 한 번의 백그라운드로는 부족 → 처음 ~12초간 반복적으로 뒤로 보낸다.
+        // 실제 백그라운드 처리는 onResume에서 — 포그라운드로 올라올 때마다 매번 뒤로 보내므로
+        // 미디어프로젝션 요청 등으로 여러 번 앞으로 나와도 절대 머무르지 않는다.
         // (에이전트/서비스는 Flutter 백그라운드에서 계속 동작. 사용자가 직접 앱을 열 때만 UI 표시)
         azitSilentBoot = intent?.getBooleanExtra("azit_silent_boot", false) == true
-        if (azitSilentBoot) {
-            val bg = object : Runnable {
-                var n = 0
-                override fun run() {
-                    try { if (azitSilentBoot) moveTaskToBack(true) } catch (_: Exception) {}
-                    n++
-                    if (n < 7) window.decorView.postDelayed(this, 1800)
-                }
-            }
-            window.decorView.postDelayed(bg, 1500)
-        }
     }
 
     // 부팅 무음 모드 플래그(사용자가 직접 앱을 열거나 화면을 만지면 해제 → 더 이상 뒤로 안 보냄)
