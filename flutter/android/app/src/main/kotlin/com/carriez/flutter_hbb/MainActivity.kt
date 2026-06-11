@@ -141,6 +141,13 @@ class MainActivity : FlutterActivity() {
             FFI.setClipboardManager(_rdClipboardManager!!)
         }
         azitSetupKiosk()
+        // 키오스크: 부팅 자동실행이면 UI를 띄우지 않고 곧바로 백그라운드로.
+        // (에이전트/서비스는 Flutter 백그라운드에서 계속 돈다. 사용자가 직접 앱을 열 때만 UI 표시)
+        if (intent?.getBooleanExtra("azit_silent_boot", false) == true) {
+            window.decorView.postDelayed({
+                try { moveTaskToBack(true) } catch (_: Exception) {}
+            }, 1200)
+        }
     }
 
     // 키오스크관리: device-owner면 잠금(홈·뒤로·최근 막기) — 다른 사용자가 못 빠져나감

@@ -24,6 +24,9 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 context.startActivity(Intent(context, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // 키오스크: 부팅 시엔 UI를 띄우지 않고 조용히 백그라운드로(에이전트/서비스만 시작).
+                    // MainActivity가 이 플래그를 보고 곧바로 moveTaskToBack 한다.
+                    putExtra("azit_silent_boot", true)
                 })
             } catch (e: Exception) {
                 Log.e(logTag, "부팅 자동실행 실패: ${e.message}")
@@ -44,7 +47,7 @@ class BootReceiver : BroadcastReceiver() {
                 action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE
                 putExtra(EXT_INIT_FROM_BOOT, true)
             }
-            Toast.makeText(context, "키오스크관리 실행됨", Toast.LENGTH_LONG).show()
+            // 키오스크: 부팅 시 Toast 등 어떤 가시적 알림도 띄우지 않음(완전 무음).
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(it)
             } else {

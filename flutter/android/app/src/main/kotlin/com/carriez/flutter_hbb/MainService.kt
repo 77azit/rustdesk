@@ -607,9 +607,11 @@ class MainService : Service() {
             val channelName = "키오스크관리"
             val channel = NotificationChannel(
                 channelId,
-                channelName, NotificationManager.IMPORTANCE_HIGH
+                // 키오스크: 알림이 헤드업으로 튀지 않게 최소 중요도(상태바·소리·팝업 없음)
+                channelName, NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "원격 도움 서비스 알림"
+                setShowBadge(false)
             }
             channel.lightColor = Color.BLUE
             channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
@@ -637,9 +639,9 @@ class MainService : Service() {
         val notification = notificationBuilder
             .setOngoing(true)
             .setSmallIcon(R.mipmap.ic_stat_logo)
-            .setDefaults(Notification.DEFAULT_ALL)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(false)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentTitle(DEFAULT_NOTIFY_TITLE)
             .setContentText(translate(DEFAULT_NOTIFY_TEXT))
             .setOnlyAlertOnce(true)
