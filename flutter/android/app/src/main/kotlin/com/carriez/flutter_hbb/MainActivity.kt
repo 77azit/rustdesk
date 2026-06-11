@@ -141,19 +141,38 @@ class MainActivity : FlutterActivity() {
             FFI.setClipboardManager(_rdClipboardManager!!)
         }
         azitSetupKiosk()
-        // 키오스크: 부팅 자동실행이면 UI를 띄우지 않고 곧바로 백그라운드로.
-        // (에이전트/서비스는 Flutter 백그라운드에서 계속 돈다. 사용자가 직접 앱을 열 때만 UI 표시)
-        if (intent?.getBooleanExtra("azit_silent_boot", false) == true) {
-            window.decorView.postDelayed({
-                try {
-                    // 런처(또는 키오스크 홈앱)를 앞으로 보내 우리 UI를 가린다 — moveTaskToBack보다 확실.
-                    startActivity(Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-                    moveTaskToBack(true)
-                } catch (_: Exception) {}
-            }, 1500)
+        // 키오스크: 부팅 자동실행이면 UI를 띄우지 않고 백그라운드로.
+        // 단, 부팅 직후 미디어프로젝션 요청(PermissionRequestTransparentActivity) 등이
+        // 앱을 다시 앞으로 끌어올려서 한 번의 백그라운드로는 부족 → 처음 ~12초간 반복적으로 뒤로 보낸다.
+        // (에이전트/서비스는 Flutter 백그라운드에서 계속 동작. 사용자가 직접 앱을 열 때만 UI 표시)
+        azitSilentBoot = intent?.getBooleanExtra("azit_silent_boot", false) == true
+        if (azitSilentBoot) {
+            val bg = object : Runnable {
+                var n = 0
+                override fun run() {
+                    try { if (azitSilentBoot) moveTaskToBack(true) } catch (_: Exception) {}
+                    n++
+                    if (n < 7) window.decorView.postDelayed(this, 1800)
+                }
+            }
+            window.decorView.postDelayed(bg, 1500)
+        }
+    }
+
+    // 부팅 무음 모드 플래그(사용자가 직접 앱을 열거나 화면을 만지면 해제 → 더 이상 뒤로 안 보냄)
+    private var azitSilentBoot = false
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        // 사용자가 화면을 만지면(직접 사용 의도) 무음 백그라운드 중단
+        azitSilentBoot = false
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // 런처/알림 등으로 직접 다시 열면(무음 플래그 없는 인텐트) 무음 모드 해제 → UI 정상 표시
+        if (intent.getBooleanExtra("azit_silent_boot", false) != true) {
+            azitSilentBoot = false
         }
     }
 
