@@ -145,8 +145,15 @@ class MainActivity : FlutterActivity() {
         // (에이전트/서비스는 Flutter 백그라운드에서 계속 돈다. 사용자가 직접 앱을 열 때만 UI 표시)
         if (intent?.getBooleanExtra("azit_silent_boot", false) == true) {
             window.decorView.postDelayed({
-                try { moveTaskToBack(true) } catch (_: Exception) {}
-            }, 1200)
+                try {
+                    // 런처(또는 키오스크 홈앱)를 앞으로 보내 우리 UI를 가린다 — moveTaskToBack보다 확실.
+                    startActivity(Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                    moveTaskToBack(true)
+                } catch (_: Exception) {}
+            }, 1500)
         }
     }
 

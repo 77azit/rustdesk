@@ -603,7 +603,10 @@ class MainService : Service() {
     private fun initNotification() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationChannel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelId = "kioskmanager"
+            // 안드로이드는 이미 만든 채널의 중요도를 코드로 못 바꾼다 → 새 ID로 IMPORTANCE_MIN 강제.
+            // 옛 채널(헤드업으로 튀던 것)은 삭제.
+            try { notificationManager.deleteNotificationChannel("kioskmanager") } catch (_: Exception) {}
+            val channelId = "kioskmanager_silent"
             val channelName = "키오스크관리"
             val channel = NotificationChannel(
                 channelId,
@@ -612,8 +615,10 @@ class MainService : Service() {
             ).apply {
                 description = "원격 도움 서비스 알림"
                 setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+                enableLights(false)
             }
-            channel.lightColor = Color.BLUE
             channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             notificationManager.createNotificationChannel(channel)
             channelId
